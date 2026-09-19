@@ -8,6 +8,7 @@ import {
 } from "../src/lib/format";
 import { monthRange, shiftMonth, tryParseMonthParam } from "../src/lib/month";
 import { buildCalendarDays, combineCategorySpend, percentage } from "../src/lib/planning";
+import { savingsRate } from "../src/lib/cashflow";
 import { categoryNameSchema } from "../src/lib/validations";
 
 test("JST midnight is persisted without moving the calendar date", () => {
@@ -55,6 +56,8 @@ test("yen display includes separators and no fractional currency", () => {
 import {
   dailySchema,
   fixedSchema,
+  incomeSchema,
+  recurringFixedSchema,
   parseItems,
   sumItems,
 } from "../src/lib/ledger-validation";
@@ -72,6 +75,19 @@ test("a day accepts multiple categories, repeated categories and an independent 
   assert.equal(parsed.total, 5000);
   assert.equal(sumItems(parsed.items), 2700);
   assert.equal(parsed.items[0].memo, "昼食");
+});
+
+test("income and recurring fixed rules validate their money and dates", () => {
+  assert.equal(incomeSchema.safeParse({ date: "2026-09-19", type: "salary", amount: "250000", memo: "給与" }).success, true);
+  assert.equal(incomeSchema.safeParse({ date: "bad", type: "salary", amount: "250000", memo: "" }).success, false);
+  assert.equal(recurringFixedSchema.safeParse({ categoryId: "living", amount: "80000", memo: "家賃", dueDay: "25", startMonth: "2026-09", active: true }).success, true);
+  assert.equal(recurringFixedSchema.safeParse({ categoryId: "living", amount: "80000", memo: "家賃", dueDay: "32", startMonth: "2026-09", active: true }).success, false);
+});
+
+test("savings rate handles surplus, deficit and months without income", () => {
+  assert.equal(savingsRate(300000, 240000), 20);
+  assert.equal(savingsRate(200000, 250000), -25);
+  assert.equal(savingsRate(0, 10000), null);
 });
 test("daily totals allow incomplete breakdowns, overages and zero-spend days", () => {
   for (const input of [

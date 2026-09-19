@@ -31,16 +31,30 @@ model Expense {
 }
 
 model Category {
-  fixedExpenses FixedExpense[]
-  budgets       CategoryBudget[]
-  templates     ExpenseTemplate[]
-  id            String            @id @default(cuid())
-  name          String            @unique
-  sortOrder     Int               @default(0)
-  subcategories Subcategory[]
-  expenses      Expense[]
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  fixedExpenses          FixedExpense[]
+  recurringFixedExpenses RecurringFixedExpense[]
+  budgets                CategoryBudget[]
+  templates              ExpenseTemplate[]
+  id                     String                  @id @default(cuid())
+  name                   String                  @unique
+  sortOrder              Int                     @default(0)
+  subcategories          Subcategory[]
+  expenses               Expense[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+}
+
+model Income {
+  id        String   @id @default(cuid())
+  date      DateTime
+  type      String
+  amount    Int
+  memo      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([type])
 }
 
 model CategoryBudget {
@@ -94,21 +108,45 @@ model DailyExpense {
 }
 
 model FixedMonth {
-  month     String         @id
-  items     FixedExpense[]
-  updatedAt DateTime       @updatedAt
+  month                String         @id
+  items                FixedExpense[]
+  recurringGeneratedAt DateTime?
+  updatedAt            DateTime       @updatedAt
 }
 
 model FixedExpense {
-  id         String     @id @default(cuid())
-  month      String
-  period     FixedMonth @relation(fields: [month], references: [month], onDelete: Cascade)
-  categoryId String
-  category   Category   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  amount     Int
-  memo       String?
-  sortOrder  Int        @default(0)
+  id          String                 @id @default(cuid())
+  month       String
+  period      FixedMonth             @relation(fields: [month], references: [month], onDelete: Cascade)
+  categoryId  String
+  category    Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  amount      Int
+  memo        String?
+  dueDay      Int?
+  recurringId String?
+  recurring   RecurringFixedExpense? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  sortOrder   Int                    @default(0)
 
+  @@unique([month, recurringId])
   @@index([month])
   @@index([categoryId])
+  @@index([recurringId])
+}
+
+model RecurringFixedExpense {
+  id         String         @id @default(cuid())
+  categoryId String
+  category   Category       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  amount     Int
+  memo       String?
+  dueDay     Int
+  startMonth String
+  active     Boolean        @default(true)
+  sortOrder  Int            @default(0)
+  items      FixedExpense[]
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([categoryId])
+  @@index([startMonth])
 }

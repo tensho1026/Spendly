@@ -57,6 +57,62 @@ export async function getFixed(month: string) {
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
   });
 }
+export async function ensureRecurringFixed(month: string) {
+  await prisma.$transaction(async (tx) => {
+    const period = await tx.fixedMonth.upsert({
+      where: { month },
+      create: { month },
+      update: {},
+    });
+    const rules = await tx.recurringFixedExpense.findMany({
+      where: {
+        active: true,
+        startMonth: { lte: month },
+        createdAt: period.recurringGeneratedAt
+          ? { gt: period.recurringGeneratedAt }
+          : undefined,
+      },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
+    if (rules.length) {
+      const existing = new Set(
+        (
+          await tx.fixedExpense.findMany({
+            where: { month, recurringId: { in: rules.map((rule) => rule.id) } },
+            select: { recurringId: true },
+          })
+        ).map((item) => item.recurringId),
+      );
+      await tx.fixedExpense.createMany({
+        data: rules
+          .filter((rule) => !existing.has(rule.id))
+          .map((rule, index) => ({
+            month,
+            categoryId: rule.categoryId,
+            amount: rule.amount,
+            memo: rule.memo,
+            dueDay: rule.dueDay,
+            recurringId: rule.id,
+            sortOrder: index,
+          })),
+        skipDuplicates: true,
+      });
+    }
+    await tx.fixedMonth.update({ where: { month }, data: { recurringGeneratedAt: new Date() } });
+  });
+}
+export async function getIncomes(month: MonthParam) {
+  return prisma.income.findMany({
+    where: { date: { gte: monthRange(month).start, lt: monthRange(month).end } },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+  });
+}
+export async function getRecurringFixed() {
+  return prisma.recurringFixedExpense.findMany({
+    include: { category: true },
+    orderBy: [{ active: "desc" }, { dueDay: "asc" }, { createdAt: "asc" }],
+  });
+}
 export async function getBudgets(month: string) {
   return prisma.categoryBudget.findMany({
     where: { month },

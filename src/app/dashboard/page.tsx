@@ -13,11 +13,12 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { getBudgets, getDays, getFixed, summarizeDays } from "@/lib/ledger";
+import { ensureRecurringFixed, getBudgets, getDays, getFixed, getIncomes, summarizeDays } from "@/lib/ledger";
 import { sumItems } from "@/lib/ledger-validation";
 import { formatMonthJP, formatYen } from "@/lib/format";
 import { currentMonth, parseMonthParam, formatMonthParam, shiftMonth } from "@/lib/month";
 import { combineCategorySpend, percentage } from "@/lib/planning";
+import { savingsRate } from "@/lib/cashflow";
 export const dynamic = "force-dynamic";
 export default async function DashboardPage({
   searchParams,
@@ -30,11 +31,13 @@ export default async function DashboardPage({
   const month = parseMonthParam(first(params.month)),
     period = formatMonthParam(month);
   const previousMonth = shiftMonth(month, -1), previousPeriod = formatMonthParam(previousMonth);
-  const [days, fixed, budgets, previousDays, previousFixed] = await Promise.all([getDays(month), getFixed(period), getBudgets(period), getDays(previousMonth), getFixed(previousPeriod)]);
+  await ensureRecurringFixed(period);
+  const [days, fixed, budgets, previousDays, previousFixed, incomes] = await Promise.all([getDays(month), getFixed(period), getBudgets(period), getDays(previousMonth), getFixed(previousPeriod), getIncomes(month)]);
   const summary = summarizeDays(days),
     fixedTotal = sumItems(fixed);
   const previousSummary = summarizeDays(previousDays), previousFixedTotal = sumItems(previousFixed);
   const monthTotal = summary.total + fixedTotal, previousTotal = previousSummary.total + previousFixedTotal, monthDelta = monthTotal - previousTotal;
+  const incomeTotal = incomes.reduce((sum, income) => sum + income.amount, 0), balance = incomeTotal - monthTotal, rate = savingsRate(incomeTotal, monthTotal);
   const currentCategorySpend = combineCategorySpend(summary.breakdown.map((row) => ({ ...row, amount: row.total })), fixed.map((row) => ({ categoryId: row.categoryId, name: row.category.name, amount: row.amount })));
   const previousCategorySpend = combineCategorySpend(previousSummary.breakdown.map((row) => ({ ...row, amount: row.total })), previousFixed.map((row) => ({ categoryId: row.categoryId, name: row.category.name, amount: row.amount })));
   const previousByCategory = new Map(previousCategorySpend.map((row) => [row.categoryId, row.amount]));
@@ -67,8 +70,14 @@ export default async function DashboardPage({
       <p className="text-sm text-muted-foreground">
         {formatMonthJP(month.year, month.month)}のお金の流れ
       </p>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
+          {
+            label: "月の収入",
+            value: incomeTotal,
+            note: `${incomes.length}件の収入`,
+            href: `/income?month=${period}`,
+          },
           {
             label: "月の支出合計",
             value: monthTotal,
@@ -110,6 +119,7 @@ export default async function DashboardPage({
           </Card>
         ))}
       </div>
+      <Card className={balance < 0 ? "border-rose-200" : "border-emerald-200"}><CardHeader><CardTitle className="text-base">今月の収支</CardTitle><CardDescription>収入 − 支出</CardDescription></CardHeader><CardContent><div className="flex flex-wrap items-end justify-between gap-3"><div><p className={`text-4xl font-bold tabular-nums ${balance < 0 ? "text-rose-700" : "text-emerald-700"}`}>{formatYen(balance)}</p><p className="mt-2 text-sm text-muted-foreground">収入 {formatYen(incomeTotal)} − 支出 {formatYen(monthTotal)}</p></div><div className="rounded-xl bg-muted px-4 py-3 text-right"><p className="text-xs text-muted-foreground">貯蓄率</p><p className="text-2xl font-bold tabular-nums">{rate === null ? "—" : `${rate}%`}</p></div></div></CardContent></Card>
       <Card>
         <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><div><CardTitle className="text-base">前月との比較</CardTitle><CardDescription>{previousMonth.year}年{previousMonth.month}月の合計 {formatYen(previousTotal)} と比較</CardDescription></div><span className={`flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold ${monthDelta > 0 ? "bg-rose-50 text-rose-700" : monthDelta < 0 ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{monthDelta > 0 ? <ArrowUp className="size-4" /> : monthDelta < 0 ? <ArrowDown className="size-4" /> : <Minus className="size-4" />}{monthDelta === 0 ? "増減なし" : `前月より${formatYen(Math.abs(monthDelta))}${monthDelta > 0 ? "増加" : "減少"}`}</span></div></CardHeader>
         <CardContent>{currentCategorySpend.length ? <div className="grid gap-2 sm:grid-cols-2">{currentCategorySpend.map((row) => { const delta = row.amount - (previousByCategory.get(row.categoryId) ?? 0); return <div key={row.categoryId} className="flex items-center justify-between rounded-lg border p-3 text-sm"><span>{row.name}</span><span className="text-right font-medium">{formatYen(row.amount)}<small className={`ml-2 ${delta > 0 ? "text-rose-600" : delta < 0 ? "text-emerald-600" : "text-muted-foreground"}`}>{delta === 0 ? "±0" : `${delta > 0 ? "+" : "-"}${formatYen(Math.abs(delta))}`}</small></span></div>; })}</div> : <p className="text-sm text-muted-foreground">比較できるカテゴリ別支出はまだありません。</p>}</CardContent>
@@ -203,6 +213,7 @@ export default async function DashboardPage({
                       {item.memo}
                     </p>
                   )}
+                  {item.dueDay && <p className="mt-1 text-xs text-muted-foreground">毎月{item.dueDay}日</p>}
                 </li>
               ))}
             </ul>

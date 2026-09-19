@@ -9,6 +9,7 @@ import {
   Wallet,
   CalendarDays,
   Target,
+  Banknote,
   Plus,
   ArrowUpRight,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils";
 const links = [
   { href: "/dashboard", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/expenses", label: "日々の支出", icon: ReceiptText },
+  { href: "/income", label: "収入", icon: Banknote },
   { href: "/budgets", label: "月間予算", icon: Target },
   { href: "/fixed-expenses", label: "月の固定費", icon: CalendarDays },
   { href: "/settings", label: "設定", icon: Settings },

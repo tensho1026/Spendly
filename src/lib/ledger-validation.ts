@@ -42,7 +42,9 @@ export const fixedSchema = z.object({
       (value) => tryParseMonthParam(value) !== null,
       "正しい月を指定してください",
     ),
-  items: itemsSchema,
+  items: z.array(ledgerItemSchema.extend({
+    dueDay: z.union([z.literal(""), z.coerce.number().int().min(1, "支払日は1〜31日で入力してください").max(31, "支払日は1〜31日で入力してください")]).optional().transform((value) => value === "" || value === undefined ? null : value),
+  })).max(100, "内訳は100行以内で入力してください"),
 });
 export const budgetSchema = z.object({
   month: z.string().refine((value) => tryParseMonthParam(value) !== null, "正しい月を指定してください"),
@@ -53,6 +55,22 @@ export const budgetSchema = z.object({
 });
 export const templateSchema = ledgerItemSchema.extend({
   id: z.string().optional(),
+});
+export const incomeSchema = z.object({
+  id: z.string().optional(),
+  date: z.string().refine((value) => dateInputToUtc(value) !== null, "正しい日付を入力してください"),
+  type: z.enum(["salary", "bonus", "extra"]),
+  amount: money(1),
+  memo: z.string().trim().max(500, "メモは500文字以内で入力してください").transform((value) => value || null),
+});
+export const recurringFixedSchema = z.object({
+  id: z.string().optional(),
+  categoryId: z.string().trim().min(1, "カテゴリを選択してください"),
+  amount: money(1),
+  memo: z.string().trim().max(500, "メモは500文字以内で入力してください").transform((value) => value || null),
+  dueDay: z.coerce.number().int().min(1, "支払日は1〜31日で入力してください").max(31, "支払日は1〜31日で入力してください"),
+  startMonth: z.string().refine((value) => tryParseMonthParam(value) !== null, "正しい開始月を指定してください"),
+  active: z.coerce.boolean(),
 });
 
 export function parseItems(value: FormDataEntryValue | null): unknown {
