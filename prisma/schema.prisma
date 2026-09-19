@@ -11,18 +11,18 @@ datasource db {
 model Expense {
   dailyId       String?
   daily         DailyExpense? @relation(fields: [dailyId], references: [id], onDelete: Cascade)
-  sortOrder     Int          @default(0)
-  id            String       @id @default(cuid())
+  sortOrder     Int           @default(0)
+  id            String        @id @default(cuid())
   amount        Int
   date          DateTime
   categoryId    String
-  category      Category     @relation(fields: [categoryId], references: [id])
+  category      Category      @relation(fields: [categoryId], references: [id])
   subcategoryId String?
-  subcategory   Subcategory? @relation(fields: [subcategoryId], references: [id])
+  subcategory   Subcategory?  @relation(fields: [subcategoryId], references: [id])
   merchant      String?
   memo          String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   @@index([dailyId])
   @@index([date])
@@ -32,13 +32,42 @@ model Expense {
 
 model Category {
   fixedExpenses FixedExpense[]
-  id            String        @id @default(cuid())
-  name          String        @unique
-  sortOrder     Int           @default(0)
+  budgets       CategoryBudget[]
+  templates     ExpenseTemplate[]
+  id            String            @id @default(cuid())
+  name          String            @unique
+  sortOrder     Int               @default(0)
   subcategories Subcategory[]
   expenses      Expense[]
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model CategoryBudget {
+  id         String   @id @default(cuid())
+  month      String
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  amount     Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([month, categoryId])
+  @@index([month])
+  @@index([categoryId])
+}
+
+model ExpenseTemplate {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  amount     Int
+  memo       String?
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([categoryId])
 }
 
 model Subcategory {

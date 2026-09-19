@@ -57,6 +57,19 @@ export async function getFixed(month: string) {
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
   });
 }
+export async function getBudgets(month: string) {
+  return prisma.categoryBudget.findMany({
+    where: { month },
+    include: { category: true },
+    orderBy: [{ category: { sortOrder: "asc" } }, { category: { name: "asc" } }],
+  });
+}
+export async function getTemplates() {
+  return prisma.expenseTemplate.findMany({
+    include: { category: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+}
 export type DailyRecord = NonNullable<Awaited<ReturnType<typeof getDaily>>>;
 export type FixedRecord = Awaited<ReturnType<typeof getFixed>>[number];
 export function summarizeDays(
