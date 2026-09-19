@@ -25,9 +25,9 @@ export async function copyPreviousFixedAction(form: FormData) {
   const source = await prisma.fixedExpense.findMany({ where: { month: previous }, orderBy: { sortOrder: "asc" } });
   if (!source.length) redirect(`/fixed-expenses?month=${month}&error=no-source`);
   await prisma.$transaction(async (tx) => {
-    await tx.fixedMonth.upsert({ where: { month }, create: { month }, update: { updatedAt: new Date() } });
+    await tx.fixedMonth.upsert({ where: { month }, create: { month, recurringGeneratedAt: new Date() }, update: { updatedAt: new Date(), recurringGeneratedAt: new Date() } });
     await tx.fixedExpense.deleteMany({ where: { month } });
-    await tx.fixedExpense.createMany({ data: source.map(({ categoryId, amount, memo, sortOrder }) => ({ month, categoryId, amount, memo, sortOrder })) });
+    await tx.fixedExpense.createMany({ data: source.map(({ categoryId, amount, memo, dueDay, sortOrder }) => ({ month, categoryId, amount, memo, dueDay, sortOrder })) });
   });
   refresh();
   redirect(`/fixed-expenses?month=${month}&copied=1`);

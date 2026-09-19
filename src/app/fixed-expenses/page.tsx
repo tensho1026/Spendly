@@ -7,7 +7,7 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
-import { getFixed } from "@/lib/ledger";
+import { ensureRecurringFixed, getFixed } from "@/lib/ledger";
 import { getCategoriesWithSub } from "@/lib/queries";
 import { currentMonth, formatMonthParam, parseMonthParam } from "@/lib/month";
 import { shiftMonth } from "@/lib/month";
@@ -24,6 +24,7 @@ export default async function FixedExpensesPage({
   );
   const period = formatMonthParam(month);
   const previous = shiftMonth(month, -1);
+  await ensureRecurringFixed(period);
   const [items, categories] = await Promise.all([
     getFixed(period),
     getCategoriesWithSub(),
@@ -55,7 +56,7 @@ export default async function FixedExpensesPage({
             {month.year}年{month.month}月の固定費
           </CardTitle>
           <CardDescription>
-            この月だけの金額とメモを入力してください。他の月には自動で追加されません。
+            自動作成された項目も、この月だけ金額・支払日・メモを変更できます。
           </CardDescription>
         </CardHeader>
         <CardContent>

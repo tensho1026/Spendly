@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Tags, Zap } from "lucide-react";
+import { ChevronRight, Tags, Zap, RefreshCw } from "lucide-react";
 
 import {
   Card,
@@ -21,6 +21,12 @@ const SETTINGS_LINKS = [
     title: "よく使う内訳",
     description: "昼食や電車など、よく入力するカテゴリ・金額・メモを登録できます。",
     icon: Zap,
+  },
+  {
+    href: "/settings/recurring-fixed",
+    title: "固定費の自動作成",
+    description: "家賃やサブスクを、指定した支払日で毎月自動追加します。",
+    icon: RefreshCw,
   },
 ];
 

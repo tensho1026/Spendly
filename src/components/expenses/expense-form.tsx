@@ -13,8 +13,8 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 
-type Item = { categoryId: string; amount: number; memo: string | null };
-type Row = { key: number; categoryId: string; amount: string; memo: string };
+type Item = { categoryId: string; amount: number; memo: string | null; dueDay?: number | null };
+type Row = { key: number; categoryId: string; amount: string; memo: string; dueDay: string };
 type Props = {
   mode: "daily" | "fixed";
   categories: { id: string; name: string }[];
@@ -50,6 +50,7 @@ export function ExpenseForm({
       categoryId: item.categoryId,
       amount: String(item.amount),
       memo: item.memo ?? "",
+      dueDay: item.dueDay ? String(item.dueDay) : "",
     })),
   );
   const [nextKey, setNextKey] = useState(rows.length);
@@ -72,7 +73,7 @@ export function ExpenseForm({
     );
   }
   function addItem(item?: Item) {
-    setRows((previous) => [...previous, { key: nextKey, categoryId: item?.categoryId ?? "", amount: item ? String(item.amount) : "", memo: item?.memo ?? "" }]);
+    setRows((previous) => [...previous, { key: nextKey, categoryId: item?.categoryId ?? "", amount: item ? String(item.amount) : "", memo: item?.memo ?? "", dueDay: item?.dueDay ? String(item.dueDay) : "" }]);
     setNextKey((value) => value + 1);
     setChanged(true);
   }
@@ -89,10 +90,11 @@ export function ExpenseForm({
         type="hidden"
         name="items"
         value={JSON.stringify(
-          rows.map(({ categoryId, amount, memo }) => ({
+          rows.map(({ categoryId, amount, memo, dueDay }) => ({
             categoryId,
             amount,
             memo,
+            ...(mode === "fixed" ? { dueDay } : {}),
           })),
         )}
       />
@@ -260,6 +262,12 @@ export function ExpenseForm({
                   }
                 />
               </div>
+              {mode === "fixed" && (
+                <div className="space-y-2">
+                  <Label htmlFor={`due-day-${row.key}`}>支払日 <span className="text-xs text-muted-foreground">任意</span></Label>
+                  <Input id={`due-day-${row.key}`} aria-label={`${index + 1}行目の支払日`} inputMode="numeric" placeholder="例: 25" value={row.dueDay} onChange={(event) => { setChanged(true); setRows((previous) => previous.map((item) => item.key === row.key ? { ...item, dueDay: normalize(event.target.value).slice(0, 2) } : item)); }} />
+                </div>
+              )}
             </div>
           ))}
           <Button

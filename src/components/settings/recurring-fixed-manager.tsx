@@ -1,0 +1,23 @@
+"use client";
+
+import { useActionState, useEffect, useRef } from "react";
+import { Plus, Save, Trash2 } from "lucide-react";
+import { deleteRecurringFixedAction, saveRecurringFixedAction } from "@/app/actions/cashflow";
+import { initialActionState } from "@/lib/action-state";
+import { formatYen } from "@/lib/format";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+
+type Rule = { id: string; categoryId: string; amount: number; memo: string | null; dueDay: number; startMonth: string; active: boolean; category: { name: string } };
+function RuleRow({ rule, categories }: { rule: Rule; categories: { id: string; name: string }[] }) {
+  const [state, action, pending] = useActionState(saveRecurringFixedAction, initialActionState);
+  return <li className="p-4"><form action={action} className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-6"><input type="hidden" name="id" value={rule.id} /><div className="space-y-1"><Label>カテゴリ</Label><NativeSelect name="categoryId" defaultValue={rule.categoryId}>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</NativeSelect></div><div className="space-y-1"><Label>金額</Label><Input name="amount" inputMode="numeric" defaultValue={rule.amount} required /></div><div className="space-y-1"><Label>毎月の日</Label><Input name="dueDay" inputMode="numeric" defaultValue={rule.dueDay} required /></div><div className="space-y-1"><Label>開始月</Label><Input name="startMonth" type="month" defaultValue={rule.startMonth} required /></div><div className="space-y-1"><Label>メモ</Label><Input name="memo" defaultValue={rule.memo ?? ""} /></div><div className="flex items-center gap-2"><label className="flex items-center gap-2 text-sm"><input type="checkbox" name="active" defaultChecked={rule.active} />有効</label><Button variant="outline" size="sm" disabled={pending}><Save className="size-4" />更新</Button></div>{state.message && <p role="status" className={`sm:col-span-2 lg:col-span-6 text-sm ${state.ok ? "text-primary" : "text-destructive"}`}>{state.message}</p>}</form><div className="mt-3 flex items-center justify-between"><span className="text-xs text-muted-foreground">毎月{rule.dueDay}日 · {rule.category.name} · {formatYen(rule.amount)}{!rule.active && " · 停止中"}</span><form action={deleteRecurringFixedAction}><input type="hidden" name="id" value={rule.id} /><Button variant="ghost" size="sm" className="text-destructive"><Trash2 className="size-4" />削除</Button></form></div></li>;
+}
+export function RecurringFixedManager({ rules, categories, currentMonth }: { rules: Rule[]; categories: { id: string; name: string }[]; currentMonth: string }) {
+  const [state, action, pending] = useActionState(saveRecurringFixedAction, initialActionState);
+  const ref = useRef<HTMLFormElement>(null);
+  useEffect(() => { if (state.ok) ref.current?.reset(); }, [state]);
+  return <div className="space-y-6"><form ref={ref} action={action} className="grid items-end gap-4 rounded-xl border p-4 sm:grid-cols-2 lg:grid-cols-6"><div className="space-y-2"><Label htmlFor="rule-category">カテゴリ</Label><NativeSelect id="rule-category" name="categoryId" required><option value="">選択</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</NativeSelect></div><div className="space-y-2"><Label htmlFor="rule-amount">金額</Label><Input id="rule-amount" name="amount" inputMode="numeric" required /></div><div className="space-y-2"><Label htmlFor="rule-day">毎月の日</Label><Input id="rule-day" name="dueDay" inputMode="numeric" placeholder="25" required /></div><div className="space-y-2"><Label htmlFor="rule-start">開始月</Label><Input id="rule-start" name="startMonth" type="month" defaultValue={currentMonth} required /></div><div className="space-y-2"><Label htmlFor="rule-memo">メモ</Label><Input id="rule-memo" name="memo" placeholder="例: 家賃" /></div><input type="hidden" name="active" value="true" /><Button disabled={pending}><Plus className="size-4" />{pending ? "追加中..." : "ルールを追加"}</Button>{state.message && <p role="status" className={`sm:col-span-2 lg:col-span-6 text-sm ${state.ok ? "text-primary" : "text-destructive"}`}>{state.message}</p>}</form>{rules.length ? <ul className="divide-y rounded-xl border">{rules.map((rule) => <RuleRow key={rule.id} rule={rule} categories={categories} />)}</ul> : <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">自動作成ルールはまだありません。</p>}</div>;
+}
