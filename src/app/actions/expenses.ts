@@ -1,230 +1,153 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { Prisma } from "@prisma/client";
-
-import type { ActionState } from "@/lib/action-state";
-import { dateInputToUtc } from "@/lib/format";
 import { prisma } from "@/lib/prisma";
-import { expenseSchema, toFieldErrors } from "@/lib/validations";
+import { dateInputToUtc } from "@/lib/format";
+import { dailySchema, fixedSchema, parseItems } from "@/lib/ledger-validation";
+import type { ActionState } from "@/lib/action-state";
 
-const NOT_FOUND_MESSAGE = "対象の支出が見つかりませんでした";
-const VALIDATION_MESSAGE = "入力内容を確認してください";
-const UNKNOWN_ERROR_MESSAGE =
-  "保存に失敗しました。時間をおいて再度お試しください";
-
-/**
- * 小カテゴリの select は候補が 0 件のとき disabled になり FormData に載らない。
- * 「キーが無い」場合も「空文字」の場合も未選択として扱う。
- */
-function readExpenseInput(formData: FormData) {
+function refresh() {
+  revalidatePath("/expenses", "layout");
+  revalidatePath("/dashboard");
+  revalidatePath("/fixed-expenses");
+  revalidatePath("/settings/categories");
+}
+async function validateCategories(items: { categoryId: string }[]) {
+  const ids = [...new Set(items.map((item) => item.categoryId))];
+  return (
+    (await prisma.category.count({ where: { id: { in: ids } } })) === ids.length
+  );
+}
+function failure(error: unknown): ActionState {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2002")
+      return {
+        ok: false,
+        message:
+          "この日付は登録済みです。日々の支出一覧から、その日の記録を編集してください。",
+      };
+    if (error.code === "P2025")
+      return {
+        ok: false,
+        message: "記録が見つかりません。画面を再読み込みしてください。",
+      };
+    if (error.code === "P2003")
+      return {
+        ok: false,
+        message: "選択したカテゴリが削除されています。選び直してください。",
+      };
+  }
+  console.error("支出の保存に失敗しました", error);
   return {
-    amount: formData.get("amount"),
-    date: formData.get("date"),
-    categoryId: formData.get("categoryId"),
-    subcategoryId: formData.get("subcategoryId"),
-    merchant: formData.get("merchant"),
-    memo: formData.get("memo"),
+    ok: false,
+    message:
+      "保存に失敗しました。入力内容を残したまま、もう一度お試しください。",
   };
 }
-
-function readId(formData: FormData): string {
-  const value = formData.get("id");
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function invalidInput(fieldErrors: Record<string, string[]>): ActionState {
-  return { ok: false, fieldErrors, message: VALIDATION_MESSAGE };
-}
-
-function revalidateExpensePaths(id?: string): void {
-  revalidatePath("/expenses");
-  revalidatePath("/dashboard");
-
-  if (id) {
-    revalidatePath(`/expenses/${id}`);
-  }
-}
-
-/** 選択された大カテゴリと小カテゴリの組み合わせが実在するかを確認する。 */
-async function validateCategorySelection(
-  categoryId: string,
-  subcategoryId: string | null,
-): Promise<Record<string, string[]> | null> {
-  const category = await prisma.category.findUnique({
-    where: { id: categoryId },
-    select: { id: true },
-  });
-
-  if (!category) {
-    return { categoryId: ["選択した大カテゴリが見つかりませんでした"] };
-  }
-
-  if (subcategoryId === null) {
-    return null;
-  }
-
-  const subcategory = await prisma.subcategory.findUnique({
-    where: { id: subcategoryId },
-    select: { categoryId: true },
-  });
-
-  if (!subcategory || subcategory.categoryId !== categoryId) {
-    return { subcategoryId: ["選択した詳細カテゴリが見つかりませんでした"] };
-  }
-
-  return null;
-}
-
-export async function createExpenseAction(
-  prevState: ActionState,
-  formData: FormData,
+export async function saveDailyAction(
+  _: ActionState,
+  form: FormData,
 ): Promise<ActionState> {
-  const parsed = expenseSchema.safeParse(readExpenseInput(formData));
-
-  if (!parsed.success) {
-    return invalidInput(toFieldErrors(parsed.error));
-  }
-
-  const input = parsed.data;
-  const date = dateInputToUtc(input.date);
-
-  if (!date) {
-    return invalidInput({ date: ["日付を入力してください"] });
-  }
-
-  let createdId: string;
-
+  const parsed = dailySchema.safeParse({
+    id: String(form.get("id") ?? ""),
+    date: form.get("date"),
+    total: form.get("total"),
+    items: parseItems(form.get("items")),
+  });
+  if (!parsed.success)
+    return {
+      ok: false,
+      message: parsed.error.issues
+        .map(
+          (issue) =>
+            `${issue.path[0] === "items" && typeof issue.path[1] === "number" ? `内訳${issue.path[1] + 1}行目: ` : ""}${issue.message}`,
+        )
+        .join(" / "),
+    };
+  const { id, total, items } = parsed.data;
+  const date = dateInputToUtc(parsed.data.date)!;
+  let savedId: string;
   try {
-    const selectionErrors = await validateCategorySelection(
-      input.categoryId,
-      input.subcategoryId,
-    );
-
-    if (selectionErrors) {
-      return invalidInput(selectionErrors);
-    }
-
-    const created = await prisma.expense.create({
-      data: {
-        amount: input.amount,
-        date,
-        categoryId: input.categoryId,
-        subcategoryId: input.subcategoryId,
-        merchant: input.merchant,
-        memo: input.memo,
-      },
-      select: { id: true },
+    if (!(await validateCategories(items)))
+      return {
+        ok: false,
+        message: "存在しないカテゴリが含まれています。選び直してください。",
+      };
+    const data = items.map((item, sortOrder) => ({ ...item, date, sortOrder }));
+    const saved = await prisma.$transaction(async (tx) => {
+      if (id) {
+        // Replacing the rows and updating the total must commit together.
+        await tx.dailyExpense.update({ where: { id }, data: { date, total } });
+        await tx.expense.deleteMany({ where: { dailyId: id } });
+        await tx.expense.createMany({
+          data: data.map((item) => ({ ...item, dailyId: id })),
+        });
+        return { id };
+      }
+      return tx.dailyExpense.create({
+        data: { date, total, items: { create: data } },
+        select: { id: true },
+      });
     });
-
-    createdId = created.id;
+    savedId = saved.id;
   } catch (error) {
-    console.error("支出の作成に失敗しました", error);
-    return { ok: false, message: UNKNOWN_ERROR_MESSAGE };
+    return failure(error);
   }
-
-  revalidateExpensePaths(createdId);
-  // redirect() は NEXT_REDIRECT を throw するため、必ず try/catch の外で呼ぶ。
-  redirect(`/expenses/${createdId}`);
+  refresh();
+  redirect(`/expenses/${savedId}`);
 }
 
-export async function updateExpenseAction(
-  prevState: ActionState,
-  formData: FormData,
+export async function saveFixedAction(
+  _: ActionState,
+  form: FormData,
 ): Promise<ActionState> {
-  const id = readId(formData);
-
-  if (!id) {
-    return { ok: false, message: NOT_FOUND_MESSAGE };
-  }
-
-  const parsed = expenseSchema.safeParse(readExpenseInput(formData));
-
-  if (!parsed.success) {
-    return invalidInput(toFieldErrors(parsed.error));
-  }
-
-  const input = parsed.data;
-  const date = dateInputToUtc(input.date);
-
-  if (!date) {
-    return invalidInput({ date: ["日付を入力してください"] });
-  }
-
+  const parsed = fixedSchema.safeParse({
+    month: form.get("month"),
+    items: parseItems(form.get("items")),
+  });
+  if (!parsed.success)
+    return {
+      ok: false,
+      message: parsed.error.issues.map((issue) => issue.message).join(" / "),
+    };
+  const { month, items } = parsed.data;
   try {
-    const existing = await prisma.expense.findUnique({
-      where: { id },
-      select: { id: true },
-    });
-
-    if (!existing) {
-      return { ok: false, message: NOT_FOUND_MESSAGE };
-    }
-
-    const selectionErrors = await validateCategorySelection(
-      input.categoryId,
-      input.subcategoryId,
-    );
-
-    if (selectionErrors) {
-      return invalidInput(selectionErrors);
-    }
-
-    await prisma.expense.update({
-      where: { id },
-      data: {
-        amount: input.amount,
-        date,
-        categoryId: input.categoryId,
-        subcategoryId: input.subcategoryId,
-        merchant: input.merchant,
-        memo: input.memo,
-      },
+    if (!(await validateCategories(items)))
+      return {
+        ok: false,
+        message: "存在しないカテゴリが含まれています。選び直してください。",
+      };
+    await prisma.$transaction(async (tx) => {
+      await tx.fixedMonth.upsert({
+        where: { month },
+        create: { month },
+        update: { updatedAt: new Date() },
+      });
+      await tx.fixedExpense.deleteMany({ where: { month } });
+      await tx.fixedExpense.createMany({
+        data: items.map((item, sortOrder) => ({ ...item, month, sortOrder })),
+      });
     });
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2025"
-    ) {
-      return { ok: false, message: NOT_FOUND_MESSAGE };
-    }
-
-    console.error("支出の更新に失敗しました", error);
-    return { ok: false, message: UNKNOWN_ERROR_MESSAGE };
+    return failure(error);
   }
-
-  revalidateExpensePaths(id);
-  redirect(`/expenses/${id}`);
+  refresh();
+  redirect(`/fixed-expenses?month=${encodeURIComponent(month)}&saved=1`);
 }
 
 export async function deleteExpenseAction(
-  prevState: ActionState,
-  formData: FormData,
+  _: ActionState,
+  form: FormData,
 ): Promise<ActionState> {
-  const id = readId(formData);
-
-  if (!id) {
-    return { ok: false, message: NOT_FOUND_MESSAGE };
-  }
-
+  const id = String(form.get("id") ?? "");
+  if (!id) return { ok: false, message: "記録が見つかりません" };
   try {
-    await prisma.expense.delete({ where: { id } });
+    await prisma.dailyExpense.delete({ where: { id } });
   } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2025"
-    ) {
-      return { ok: false, message: NOT_FOUND_MESSAGE };
-    }
-
-    console.error("支出の削除に失敗しました", error);
-    return {
-      ok: false,
-      message: "削除に失敗しました。時間をおいて再度お試しください",
-    };
+    return failure(error);
   }
-
-  revalidateExpensePaths(id);
+  refresh();
   redirect("/expenses");
 }

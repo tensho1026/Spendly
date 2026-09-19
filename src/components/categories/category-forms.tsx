@@ -153,7 +153,7 @@ export function CreateCategoryForm({ onClose }: CreateCategoryFormProps) {
   return (
     <form ref={formRef} action={formAction} className="space-y-1.5">
       <Label htmlFor="new-category-name" className="sr-only">
-        大カテゴリ名
+        カテゴリ名
       </Label>
 
       <div className="flex items-center gap-2">

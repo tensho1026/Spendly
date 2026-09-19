@@ -17,11 +17,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { initialActionState } from "@/lib/action-state";
-import { formatYen } from "@/lib/format";
-import type { ExpenseWithRelations } from "@/lib/queries";
+import { formatDateJP, formatYen } from "@/lib/format";
+import type { DailyRecord } from "@/lib/ledger";
 
 export type DeleteExpenseDialogProps = {
-  expense: ExpenseWithRelations;
+  expense: DailyRecord;
 };
 
 function DeleteButton() {
@@ -47,11 +47,7 @@ export function DeleteExpenseDialog({ expense }: DeleteExpenseDialogProps) {
     initialActionState,
   );
 
-  const heading =
-    expense.merchant?.trim() || expense.memo?.trim() || expense.category.name;
-  const categoryPath = expense.subcategory
-    ? `${expense.category.name} > ${expense.subcategory.name}`
-    : expense.category.name;
+  const heading = formatDateJP(expense.date);
 
   return (
     <Dialog>
@@ -63,17 +59,19 @@ export function DeleteExpenseDialog({ expense }: DeleteExpenseDialogProps) {
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>この支出を削除しますか？</DialogTitle>
-          <DialogDescription>削除すると元に戻せません。</DialogDescription>
+          <DialogTitle>この日の記録を削除しますか？</DialogTitle>
+          <DialogDescription>
+            この日の合計とすべての内訳を削除します。元には戻せません。
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-1 rounded-lg border bg-muted/40 p-4">
           <p className="font-medium break-words">{heading}</p>
           <p className="text-sm text-muted-foreground break-words">
-            {categoryPath}
+            {expense.items.length}件の内訳
           </p>
           <p className="text-2xl font-bold tabular-nums">
-            {formatYen(expense.amount)}
+            {formatYen(expense.total)}
           </p>
         </div>
 

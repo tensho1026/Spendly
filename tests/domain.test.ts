@@ -7,16 +7,7 @@ import {
   formatYen,
 } from "../src/lib/format";
 import { monthRange, shiftMonth, tryParseMonthParam } from "../src/lib/month";
-import { expenseSchema, categoryNameSchema } from "../src/lib/validations";
-
-const expense = {
-  amount: "1200",
-  date: "2026-09-19",
-  categoryId: "category",
-  subcategoryId: "",
-  merchant: "",
-  memo: "",
-};
+import { categoryNameSchema } from "../src/lib/validations";
 
 test("JST midnight is persisted without moving the calendar date", () => {
   const date = dateInputToUtc("2026-09-01")!;
@@ -31,7 +22,6 @@ test("JST midnight is persisted without moving the calendar date", () => {
 test("invalid dates and non-leap days are rejected", () => {
   for (const date of ["2026-02-29", "2026-02-31", "2026-13-01", "invalid"]) {
     assert.equal(dateInputToUtc(date), null);
-    assert.equal(expenseSchema.safeParse({ ...expense, date }).success, false);
   }
   assert.ok(dateInputToUtc("2024-02-29"));
 });
@@ -48,27 +38,6 @@ test("invalid month queries are ignored", () => {
   for (const month of ["2026-00", "2026-13", "0099-01", "2026-9", "bad"])
     assert.equal(tryParseMonthParam(month), null);
 });
-test("amounts must fit PostgreSQL integer storage", () => {
-  for (const amount of ["", "0", "-1", "1.5", "Infinity", "2147483648"])
-    assert.equal(
-      expenseSchema.safeParse({ ...expense, amount }).success,
-      false,
-    );
-  assert.equal(
-    expenseSchema.safeParse({ ...expense, amount: "2147483647" }).success,
-    true,
-  );
-});
-test("optional fields normalize whitespace and empty values", () => {
-  const parsed = expenseSchema.parse({
-    ...expense,
-    merchant: "  shop  ",
-    memo: "  ",
-  });
-  assert.equal(parsed.merchant, "shop");
-  assert.equal(parsed.memo, null);
-  assert.equal(parsed.subcategoryId, null);
-});
 test("category names reject blanks and overly long text", () => {
   assert.equal(categoryNameSchema.safeParse({ name: "  " }).success, false);
   assert.equal(
@@ -80,4 +49,94 @@ test("category names reject blanks and overly long text", () => {
 test("yen display includes separators and no fractional currency", () => {
   assert.equal(formatYen(29830), "¥29,830");
   assert.equal(formatYen(-1200), "-¥1,200");
+});
+
+import {
+  dailySchema,
+  fixedSchema,
+  parseItems,
+  sumItems,
+} from "../src/lib/ledger-validation";
+const row = { categoryId: "food", amount: "1000", memo: " 昼食 " };
+test("a day accepts multiple categories, repeated categories and an independent total", () => {
+  const parsed = dailySchema.parse({
+    date: "2026-09-19",
+    total: "5000",
+    items: [
+      row,
+      { ...row, amount: "1200" },
+      { categoryId: "travel", amount: "500", memo: "電車" },
+    ],
+  });
+  assert.equal(parsed.total, 5000);
+  assert.equal(sumItems(parsed.items), 2700);
+  assert.equal(parsed.items[0].memo, "昼食");
+});
+test("daily totals allow incomplete breakdowns, overages and zero-spend days", () => {
+  for (const input of [
+    { total: "0", items: [] },
+    { total: "2000", items: [] },
+    { total: "500", items: [row] },
+  ]) {
+    assert.equal(
+      dailySchema.safeParse({ date: "2026-09-19", ...input }).success,
+      true,
+    );
+  }
+});
+test("invalid rows reject the whole day instead of silently losing a line", () => {
+  for (const invalid of [
+    { ...row, amount: "0" },
+    { ...row, amount: "1.2" },
+    { ...row, amount: "" },
+    { ...row, categoryId: "" },
+    { ...row, memo: "a".repeat(501) },
+  ]) {
+    assert.equal(
+      dailySchema.safeParse({
+        date: "2026-09-19",
+        total: "5000",
+        items: [row, invalid],
+      }).success,
+      false,
+    );
+  }
+  assert.equal(
+    dailySchema.safeParse({ date: "2026-09-19", total: "", items: [] }).success,
+    false,
+  );
+  assert.equal(
+    dailySchema.safeParse({
+      date: "2026-09-19",
+      total: "2147483648",
+      items: [],
+    }).success,
+    false,
+  );
+});
+test("fixed expenses belong to a month and can be cleared without a daily date", () => {
+  assert.equal(
+    fixedSchema.safeParse({ month: "2026-09", items: [row] }).success,
+    true,
+  );
+  assert.equal(
+    fixedSchema.safeParse({ month: "2026-09", items: [] }).success,
+    true,
+  );
+  assert.equal(
+    fixedSchema.safeParse({ month: "2026-13", items: [row] }).success,
+    false,
+  );
+});
+test("malformed or oversized item lists are rejected", () => {
+  assert.equal(parseItems("{broken"), null);
+  assert.equal(parseItems(null), null);
+  assert.equal(
+    dailySchema.safeParse({
+      date: "2026-09-19",
+      total: 5000,
+      items: Array(101).fill(row),
+    }).success,
+    false,
+  );
 });

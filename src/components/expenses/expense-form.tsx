@@ -1,284 +1,326 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState, type ChangeEvent } from "react";
-import { useFormStatus } from "react-dom";
-import { Loader2 } from "lucide-react";
-
-import {
-  createExpenseAction,
-  updateExpenseAction,
-} from "@/app/actions/expenses";
+import { useActionState, useState } from "react";
+import { Plus, Trash2, Save } from "lucide-react";
+import { saveDailyAction, saveFixedAction } from "@/app/actions/expenses";
+import { initialActionState } from "@/lib/action-state";
+import { differenceLabel } from "@/lib/ledger-validation";
+import { formatYen } from "@/lib/format";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
-import { initialActionState } from "@/lib/action-state";
-import { formatYen, toDateInputValue } from "@/lib/format";
-import type { CategoryWithSub, ExpenseWithRelations } from "@/lib/queries";
 
-export type ExpenseFormProps = {
-  categories: CategoryWithSub[];
-  mode: "create" | "edit";
-  expense?: ExpenseWithRelations;
+type Item = { categoryId: string; amount: number; memo: string | null };
+type Row = { key: number; categoryId: string; amount: string; memo: string };
+type Props = {
+  mode: "daily" | "fixed";
+  categories: { id: string; name: string }[];
+  period: string;
+  record?: { id: string; total: number; items: Item[] };
+  items?: Item[];
 };
-
-/** 全角数字を半角に直し、数字以外を取り除く。 */
-function normalizeAmountInput(value: string): string {
-  return value
+const normalize = (value: string) =>
+  value
     .replace(/[０-９]/g, (char) =>
       String.fromCharCode(char.charCodeAt(0) - 0xfee0),
     )
     .replace(/[^0-9]/g, "");
-}
 
-function FieldError({ id, messages }: { id: string; messages?: string[] }) {
-  if (!messages || messages.length === 0) {
-    return null;
-  }
-
-  return (
-    <p id={id} className="text-sm text-destructive">
-      {messages.join(" / ")}
-    </p>
-  );
-}
-
-function SubmitButton({ label }: { label: string }) {
-  const { pending } = useFormStatus();
-
-  return (
-    <Button type="submit" disabled={pending} className="w-full sm:w-auto">
-      {pending ? (
-        <>
-          <Loader2 className="size-4 animate-spin" />
-          保存中...
-        </>
-      ) : (
-        label
-      )}
-    </Button>
-  );
-}
-
-export function ExpenseForm({ categories, mode, expense }: ExpenseFormProps) {
-  const [state, formAction] = useActionState(
-    mode === "create" ? createExpenseAction : updateExpenseAction,
+export function ExpenseForm({
+  mode,
+  categories,
+  period,
+  record,
+  items = [],
+}: Props) {
+  const [state, action, pending] = useActionState(
+    mode === "daily" ? saveDailyAction : saveFixedAction,
     initialActionState,
   );
-  const [categoryId, setCategoryId] = useState(expense?.categoryId ?? "");
-  const [subcategoryId, setSubcategoryId] = useState(
-    expense?.subcategoryId ?? "",
+  const [date, setDate] = useState(period);
+  const [total, setTotal] = useState(record ? String(record.total) : "");
+  const [rows, setRows] = useState<Row[]>(() =>
+    (record?.items ?? items).map((item, index) => ({
+      key: index,
+      categoryId: item.categoryId,
+      amount: String(item.amount),
+      memo: item.memo ?? "",
+    })),
   );
-  const [amount, setAmount] = useState(expense ? String(expense.amount) : "");
-  const [merchant, setMerchant] = useState(expense?.merchant ?? "");
-  const [memo, setMemo] = useState(expense?.memo ?? "");
-  const [date, setDate] = useState(
-    toDateInputValue(expense?.date ?? new Date()),
+  const [nextKey, setNextKey] = useState(rows.length);
+  const [changed, setChanged] = useState(false);
+  const itemTotal = rows.reduce(
+    (sum, row) => sum + (Number(row.amount) || 0),
+    0,
   );
-
-  if (categories.length === 0) {
-    return (
-      <EmptyState
-        title="先にカテゴリを作成してください"
-        description="支出を登録するには、大カテゴリが 1 つ以上必要です。"
-        action={
-          <Button asChild>
-            <Link href="/settings/categories">カテゴリを設定する</Link>
-          </Button>
-        }
-      />
+  const difference = (Number(total) || 0) - itemTotal;
+  function changeRow(
+    key: number,
+    field: "categoryId" | "amount" | "memo",
+    value: string,
+  ) {
+    setChanged(true);
+    setRows((previous) =>
+      previous.map((row) =>
+        row.key === key ? { ...row, [field]: value } : row,
+      ),
     );
   }
-
-  const subcategories =
-    categories.find((category) => category.id === categoryId)?.subcategories ??
-    [];
-  const cancelHref =
-    mode === "edit" && expense ? `/expenses/${expense.id}` : "/expenses";
-  const fieldErrors = state.fieldErrors;
-  const amountPreview = amount === "" ? null : formatYen(Number(amount));
-
-  function handleCategoryChange(event: ChangeEvent<HTMLSelectElement>) {
-    setCategoryId(event.target.value);
-    setSubcategoryId("");
-  }
-
   return (
-    <form action={formAction} className="space-y-6">
-      {mode === "edit" && expense ? (
-        <input type="hidden" name="id" value={expense.id} />
-      ) : null}
-
-      {state.message ? (
+    <form
+      action={(form) => {
+        setChanged(false);
+        action(form);
+      }}
+      className="space-y-6"
+    >
+      <input type="hidden" name="id" value={record?.id ?? ""} />
+      <input
+        type="hidden"
+        name="items"
+        value={JSON.stringify(
+          rows.map(({ categoryId, amount, memo }) => ({
+            categoryId,
+            amount,
+            memo,
+          })),
+        )}
+      />
+      {mode === "fixed" && <input type="hidden" name="month" value={period} />}
+      {state.message && (!state.ok || !changed) && (
         <p
-          role="alert"
-          className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="status"
+          className={`rounded-lg border p-3 text-sm ${state.ok ? "bg-secondary text-primary" : "border-destructive/30 bg-destructive/5 text-destructive"}`}
         >
           {state.message}
         </p>
-      ) : null}
-
-      <div className="grid gap-6 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="amount">
-            金額 <span className="text-destructive">*</span>
-          </Label>
-          <div className="relative">
-            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground">
-              ¥
-            </span>
-            <Input
-              id="amount"
-              name="amount"
-              className="pl-7 tabular-nums"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="0"
-              required
-              value={amount}
-              onChange={(event) =>
-                setAmount(normalizeAmountInput(event.target.value))
-              }
-              aria-invalid={Boolean(fieldErrors?.amount)}
-              aria-describedby={
-                fieldErrors?.amount ? "amount-error" : undefined
-              }
-            />
+      )}
+      <fieldset disabled={pending} className="space-y-6 disabled:opacity-70">
+        {mode === "daily" ? (
+          <div className="grid gap-5 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="date">日付</Label>
+              <Input
+                id="date"
+                type="date"
+                name="date"
+                required
+                value={date}
+                onChange={(event) => {
+                  setDate(event.target.value);
+                  setChanged(true);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="total">1日の出費合計（円）</Label>
+              <Input
+                id="total"
+                name="total"
+                inputMode="numeric"
+                required
+                placeholder="例: 5000"
+                value={total}
+                onChange={(event) => {
+                  setTotal(normalize(event.target.value));
+                  setChanged(true);
+                }}
+                className="font-semibold tabular-nums"
+              />
+              <p className="text-xs text-muted-foreground">
+                内訳がまだ揃っていなくても保存できます。支出がない日は0円で記録できます。
+              </p>
+            </div>
           </div>
-          {fieldErrors?.amount ? (
-            <FieldError id="amount-error" messages={fieldErrors.amount} />
-          ) : amountPreview ? (
-            <p className="text-sm text-muted-foreground tabular-nums">
-              {amountPreview}
+        ) : (
+          <div className="rounded-xl bg-secondary p-5">
+            <p className="text-sm text-secondary-foreground">
+              この月の固定費合計
             </p>
-          ) : null}
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="date">
-            日付 <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="date"
-            name="date"
-            type="date"
-            required
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            aria-invalid={Boolean(fieldErrors?.date)}
-            aria-describedby={fieldErrors?.date ? "date-error" : undefined}
-          />
-          <FieldError id="date-error" messages={fieldErrors?.date} />
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="categoryId">
-            大カテゴリ <span className="text-destructive">*</span>
-          </Label>
-          <NativeSelect
-            id="categoryId"
-            name="categoryId"
-            required
-            value={categoryId}
-            onChange={handleCategoryChange}
-            aria-invalid={Boolean(fieldErrors?.categoryId)}
-            aria-describedby={
-              fieldErrors?.categoryId ? "categoryId-error" : undefined
-            }
+            <p className="mt-2 text-3xl font-bold tabular-nums">
+              {formatYen(itemTotal)}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              日々の支出には含めず、月の支出に一度だけ加算します。
+            </p>
+          </div>
+        )}
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-semibold">
+              {mode === "daily" ? "この日の内訳" : "固定費の内訳"}
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              カテゴリ・金額・メモ
+            </span>
+          </div>
+          {rows.length === 0 && (
+            <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+              {mode === "daily"
+                ? "合計だけ先に記録することもできます。"
+                : "家賃やサブスクなど、この月の固定費を追加しましょう。"}
+            </p>
+          )}
+          {rows.map((row, index) => (
+            <div
+              key={row.key}
+              className="space-y-3 rounded-xl border bg-background/50 p-4"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  {index + 1}件目
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`${index + 1}行目を削除`}
+                  onClick={() => {
+                    setRows(rows.filter((item) => item.key !== row.key));
+                    setChanged(true);
+                  }}
+                >
+                  <Trash2 className="size-4" />
+                  削除
+                </Button>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor={`category-${row.key}`}>カテゴリ</Label>
+                  <NativeSelect
+                    id={`category-${row.key}`}
+                    aria-label={`${index + 1}行目のカテゴリ`}
+                    required
+                    value={row.categoryId}
+                    onChange={(event) =>
+                      changeRow(row.key, "categoryId", event.target.value)
+                    }
+                  >
+                    <option value="">カテゴリを選択</option>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </NativeSelect>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor={`amount-${row.key}`}>金額（円）</Label>
+                  <Input
+                    id={`amount-${row.key}`}
+                    aria-label={`${index + 1}行目の金額`}
+                    inputMode="numeric"
+                    required
+                    placeholder="0"
+                    value={row.amount}
+                    onChange={(event) =>
+                      changeRow(
+                        row.key,
+                        "amount",
+                        normalize(event.target.value),
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor={`memo-${row.key}`}>
+                  メモ{" "}
+                  <span className="text-xs text-muted-foreground">任意</span>
+                </Label>
+                <Textarea
+                  id={`memo-${row.key}`}
+                  aria-label={`${index + 1}行目のメモ`}
+                  rows={2}
+                  maxLength={500}
+                  placeholder={
+                    mode === "daily"
+                      ? "例: 昼ごはん、週末の買い出し"
+                      : "例: 家賃、音楽サブスク"
+                  }
+                  value={row.memo}
+                  onChange={(event) =>
+                    changeRow(row.key, "memo", event.target.value)
+                  }
+                />
+              </div>
+            </div>
+          ))}
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full border-dashed"
+            disabled={categories.length === 0 || rows.length >= 100}
+            onClick={() => {
+              setRows([
+                ...rows,
+                { key: nextKey, categoryId: "", amount: "", memo: "" },
+              ]);
+              setNextKey(nextKey + 1);
+              setChanged(true);
+            }}
           >
-            <option value="">カテゴリを選択</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </NativeSelect>
-          <FieldError
-            id="categoryId-error"
-            messages={fieldErrors?.categoryId}
-          />
+            <Plus className="size-4" />
+            内訳を追加
+          </Button>
+          {categories.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              内訳の入力には
+              <Link
+                href="/settings/categories"
+                className="text-primary underline"
+              >
+                カテゴリの作成
+              </Link>
+              が必要です。
+            </p>
+          )}
         </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="subcategoryId">詳細カテゴリ</Label>
-          <NativeSelect
-            id="subcategoryId"
-            name="subcategoryId"
-            value={subcategoryId}
-            disabled={subcategories.length === 0}
-            onChange={(event) => setSubcategoryId(event.target.value)}
-            aria-invalid={Boolean(fieldErrors?.subcategoryId)}
-            aria-describedby={
-              fieldErrors?.subcategoryId ? "subcategoryId-error" : undefined
-            }
+        {mode === "daily" && (
+          <div
+            aria-live="polite"
+            className="space-y-3 rounded-xl bg-secondary/60 p-4"
           >
-            {subcategories.length === 0 ? (
-              <option value="">
-                {categoryId === ""
-                  ? "先に大カテゴリを選択"
-                  : "詳細カテゴリなし"}
-              </option>
-            ) : (
-              <>
-                <option value="">指定なし</option>
-                {subcategories.map((subcategory) => (
-                  <option key={subcategory.id} value={subcategory.id}>
-                    {subcategory.name}
-                  </option>
-                ))}
-              </>
+            <div className="flex justify-between text-sm">
+              <span>内訳の合計</span>
+              <span className="font-semibold tabular-nums">
+                {formatYen(itemTotal)}
+              </span>
+            </div>
+            {total !== "" && (
+              <div className="flex flex-wrap justify-between gap-2 border-t pt-3 text-sm">
+                <span>{differenceLabel(difference)}</span>
+                <span className="font-semibold tabular-nums">
+                  {formatYen(Math.abs(difference))}
+                </span>
+              </div>
             )}
-          </NativeSelect>
-          <FieldError
-            id="subcategoryId-error"
-            messages={fieldErrors?.subcategoryId}
-          />
+            <p className="text-xs text-muted-foreground">
+              月の集計には「1日の出費合計」を使います。差額は後から修正できます。
+            </p>
+          </div>
+        )}
+        <div className="flex flex-wrap justify-end gap-2">
+          {mode === "daily" && (
+            <Button asChild variant="outline">
+              <Link href={record ? `/expenses/${record.id}` : "/expenses"}>
+                キャンセル
+              </Link>
+            </Button>
+          )}
+          <Button type="submit" disabled={pending}>
+            <Save className="size-4" />
+            {pending
+              ? "保存中..."
+              : mode === "daily"
+                ? "1日分を保存"
+                : "この月の固定費を保存"}
+          </Button>
         </div>
-
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="merchant">支出先</Label>
-          <Input
-            id="merchant"
-            name="merchant"
-            placeholder="例: セブンイレブン"
-            autoComplete="off"
-            value={merchant}
-            onChange={(event) => setMerchant(event.target.value)}
-            maxLength={100}
-            aria-invalid={Boolean(fieldErrors?.merchant)}
-            aria-describedby={
-              fieldErrors?.merchant ? "merchant-error" : undefined
-            }
-          />
-          <FieldError id="merchant-error" messages={fieldErrors?.merchant} />
-        </div>
-
-        <div className="space-y-2 sm:col-span-2">
-          <Label htmlFor="memo">メモ</Label>
-          <Textarea
-            id="memo"
-            name="memo"
-            rows={3}
-            placeholder="例: 昼飯"
-            value={memo}
-            onChange={(event) => setMemo(event.target.value)}
-            maxLength={500}
-            aria-invalid={Boolean(fieldErrors?.memo)}
-            aria-describedby={fieldErrors?.memo ? "memo-error" : undefined}
-          />
-          <FieldError id="memo-error" messages={fieldErrors?.memo} />
-        </div>
-      </div>
-
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button asChild variant="outline" className="w-full sm:w-auto">
-          <Link href={cancelHref}>キャンセル</Link>
-        </Button>
-        <SubmitButton label={mode === "create" ? "支出を登録" : "変更を保存"} />
-      </div>
+      </fieldset>
     </form>
   );
 }

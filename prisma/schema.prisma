@@ -9,6 +9,9 @@ datasource db {
 }
 
 model Expense {
+  dailyId       String?
+  daily         DailyExpense? @relation(fields: [dailyId], references: [id], onDelete: Cascade)
+  sortOrder     Int          @default(0)
   id            String       @id @default(cuid())
   amount        Int
   date          DateTime
@@ -21,12 +24,14 @@ model Expense {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
+  @@index([dailyId])
   @@index([date])
   @@index([categoryId])
   @@index([subcategoryId])
 }
 
 model Category {
+  fixedExpenses FixedExpense[]
   id            String        @id @default(cuid())
   name          String        @unique
   sortOrder     Int           @default(0)
@@ -47,5 +52,34 @@ model Subcategory {
   updatedAt  DateTime  @updatedAt
 
   @@unique([categoryId, name])
+  @@index([categoryId])
+}
+
+model DailyExpense {
+  id        String    @id @default(cuid())
+  date      DateTime  @unique
+  total     Int
+  items     Expense[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model FixedMonth {
+  month     String         @id
+  items     FixedExpense[]
+  updatedAt DateTime       @updatedAt
+}
+
+model FixedExpense {
+  id         String     @id @default(cuid())
+  month      String
+  period     FixedMonth @relation(fields: [month], references: [month], onDelete: Cascade)
+  categoryId String
+  category   Category   @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  amount     Int
+  memo       String?
+  sortOrder  Int        @default(0)
+
+  @@index([month])
   @@index([categoryId])
 }

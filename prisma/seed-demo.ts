@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { dateInputToUtc, toDateInputValue } from "../src/lib/format";
 
 const prisma = new PrismaClient();
 
@@ -21,7 +22,12 @@ const PROFILES: Record<string, Record<string, SubcategoryProfile>> = {
       min: 280,
       max: 1200,
       step: 10,
-      merchants: ["セブン-イレブン", "ファミリーマート", "ローソン", "ミニストップ"],
+      merchants: [
+        "セブン-イレブン",
+        "ファミリーマート",
+        "ローソン",
+        "ミニストップ",
+      ],
       memos: ["昼食", "朝のコーヒー", "夜食", null, null],
     },
     スーパー: {
@@ -30,14 +36,25 @@ const PROFILES: Record<string, Record<string, SubcategoryProfile>> = {
       max: 6800,
       step: 10,
       merchants: ["オーケーストア", "ライフ", "業務スーパー", "まいばすけっと"],
-      memos: ["一週間分の買い出し", "野菜と肉", "日持ちする食材をまとめ買い", null],
+      memos: [
+        "一週間分の買い出し",
+        "野菜と肉",
+        "日持ちする食材をまとめ買い",
+        null,
+      ],
     },
     外食: {
       weight: 3,
       min: 800,
       max: 5200,
       step: 50,
-      merchants: ["日高屋", "スシロー", "サイゼリヤ", "つけ麺 和屋", "焼肉 山水"],
+      merchants: [
+        "日高屋",
+        "スシロー",
+        "サイゼリヤ",
+        "つけ麺 和屋",
+        "焼肉 山水",
+      ],
       memos: ["友人とランチ", "同僚と夕食", "ひとりで軽く", null],
     },
     その他: {
@@ -156,7 +173,7 @@ function createRandom(seed: number) {
 
 async function main() {
   const random = createRandom(20260917);
-  const pick = <T,>(items: T[]): T => items[Math.floor(random() * items.length)];
+  const pick = <T>(items: T[]): T => items[Math.floor(random() * items.length)];
 
   const categories = await prisma.category.findMany({
     include: { subcategories: true },
@@ -209,8 +226,7 @@ async function main() {
       0,
     ).getDate();
     // 今月は今日までしか支出が存在しないようにする
-    const maxDay =
-      offset === 0 ? Math.max(today.getDate(), 1) : lastDayOfMonth;
+    const maxDay = offset === 0 ? Math.max(today.getDate(), 1) : lastDayOfMonth;
     return { start, maxDay, isCurrentMonth: offset === 0 };
   });
 
@@ -235,8 +251,7 @@ async function main() {
       const { profile } = entry;
 
       const steps = Math.floor((profile.max - profile.min) / profile.step) + 1;
-      const amount =
-        profile.min + Math.floor(random() * steps) * profile.step;
+      const amount = profile.min + Math.floor(random() * steps) * profile.step;
 
       const day = 1 + Math.floor(random() * month.maxDay);
       const hour = 8 + Math.floor(random() * 13);
@@ -262,7 +277,34 @@ async function main() {
 
   data.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  await prisma.expense.createMany({ data });
+  const byDay = new Map<string, typeof data>();
+  for (const item of data) {
+    const key = toDateInputValue(item.date);
+    byDay.set(key, [...(byDay.get(key) ?? []), item]);
+  }
+  await prisma.$transaction(
+    async (tx) => {
+      for (const [key, items] of byDay) {
+        const date = dateInputToUtc(key)!;
+        // Demo data never replaces a day the user has already entered.
+        if (await tx.dailyExpense.findUnique({ where: { date } })) continue;
+        await tx.dailyExpense.create({
+          data: {
+            date,
+            total: items.reduce((sum, item) => sum + item.amount, 0),
+            items: {
+              create: items.map((item, sortOrder) => ({
+                ...item,
+                date,
+                sortOrder,
+              })),
+            },
+          },
+        });
+      }
+    },
+    { timeout: 30000 },
+  );
 
   const total = data.reduce((sum, item) => sum + item.amount, 0);
   console.log(

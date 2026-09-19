@@ -12,7 +12,8 @@ const SETTINGS_LINKS = [
   {
     href: "/settings/categories",
     title: "カテゴリ管理",
-    description: "大カテゴリと詳細カテゴリの追加・名前の変更・削除ができます。",
+    description:
+      "日々の支出と固定費で使うカテゴリの追加・名前の変更・削除ができます。",
     icon: Tags,
   },
 ];

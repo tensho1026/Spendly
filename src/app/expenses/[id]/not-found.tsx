@@ -11,7 +11,7 @@ export default function ExpenseNotFound() {
         description="すでに削除されたか、URL が正しくない可能性があります。"
         action={
           <Button asChild>
-            <Link href="/expenses">支出一覧に戻る</Link>
+            <Link href="/expenses">日々の支出に戻る</Link>
           </Button>
         }
       />

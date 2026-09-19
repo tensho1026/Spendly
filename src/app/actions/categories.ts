@@ -44,6 +44,8 @@ function revalidateCategoryPaths(): void {
   revalidatePath("/settings/categories");
   revalidatePath("/expenses");
   revalidatePath("/dashboard");
+  revalidatePath("/expenses", "layout");
+  revalidatePath("/fixed-expenses");
 }
 
 export async function createCategoryAction(
@@ -146,7 +148,9 @@ export async function deleteCategoryAction(
     }
 
     // 使用中のカテゴリを消すと支出の履歴が壊れるため、件数を見て止める。
-    const used = await prisma.expense.count({ where: { categoryId: id } });
+    const used =
+      (await prisma.expense.count({ where: { categoryId: id } })) +
+      (await prisma.fixedExpense.count({ where: { categoryId: id } }));
 
     if (used > 0) {
       return {

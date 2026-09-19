@@ -1,0 +1,90 @@
+import { prisma } from "@/lib/prisma";
+import { monthRange, type MonthParam } from "@/lib/month";
+import { sumItems } from "@/lib/ledger-validation";
+
+const dailyInclude = {
+  items: {
+    include: { category: true },
+    orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+  },
+};
+export async function getDaily(id: string) {
+  const day = await prisma.dailyExpense.findUnique({
+    where: { id },
+    include: dailyInclude,
+  });
+  if (day) return day;
+  // Old bookmarked expense URLs continue to open the migrated day.
+  const legacy = await prisma.expense.findUnique({
+    where: { id },
+    select: { dailyId: true },
+  });
+  return legacy?.dailyId
+    ? prisma.dailyExpense.findUnique({
+        where: { id: legacy.dailyId },
+        include: dailyInclude,
+      })
+    : null;
+}
+export async function getDays(
+  month?: MonthParam,
+  filters: { categoryId?: string; keyword?: string } = {},
+) {
+  const range = month ? monthRange(month) : null;
+  return prisma.dailyExpense.findMany({
+    where: {
+      date: range ? { gte: range.start, lt: range.end } : undefined,
+      items:
+        filters.categoryId || filters.keyword
+          ? {
+              some: {
+                categoryId: filters.categoryId || undefined,
+                memo: filters.keyword
+                  ? { contains: filters.keyword, mode: "insensitive" }
+                  : undefined,
+              },
+            }
+          : undefined,
+    },
+    include: dailyInclude,
+    orderBy: { date: "desc" },
+  });
+}
+export async function getFixed(month: string) {
+  return prisma.fixedExpense.findMany({
+    where: { month },
+    include: { category: true },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+  });
+}
+export type DailyRecord = NonNullable<Awaited<ReturnType<typeof getDaily>>>;
+export type FixedRecord = Awaited<ReturnType<typeof getFixed>>[number];
+export function summarizeDays(
+  days: {
+    total: number;
+    items: { amount: number; categoryId: string; category: { name: string } }[];
+  }[],
+) {
+  const grouped = new Map<
+    string,
+    { categoryId: string; name: string; total: number }
+  >();
+  for (const day of days)
+    for (const item of day.items) {
+      const row = grouped.get(item.categoryId) ?? {
+        categoryId: item.categoryId,
+        name: item.category.name,
+        total: 0,
+      };
+      row.total += item.amount;
+      grouped.set(item.categoryId, row);
+    }
+  const total = days.reduce((sum, day) => sum + day.total, 0);
+  const itemTotal = days.reduce((sum, day) => sum + sumItems(day.items), 0);
+  return {
+    total,
+    itemTotal,
+    difference: total - itemTotal,
+    breakdown: [...grouped.values()].sort((a, b) => b.total - a.total),
+  };
+}

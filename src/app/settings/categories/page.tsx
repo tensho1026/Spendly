@@ -23,7 +23,7 @@ export default async function CategoriesSettingsPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">カテゴリ</h1>
           <p className="text-sm text-muted-foreground">
-            支出を分類するための大カテゴリと、その中の詳細カテゴリを管理します。支出が紐づいているカテゴリは削除できません。
+            日々の支出と固定費で使うカテゴリを管理します。使用中のカテゴリは削除できません。
           </p>
         </div>
       </div>
