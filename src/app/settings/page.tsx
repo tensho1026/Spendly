@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Tags, Zap, RefreshCw } from "lucide-react";
+import { ChevronRight, Tags, Zap, RefreshCw, Tag } from "lucide-react";
 
 import {
   Card,
@@ -27,6 +27,12 @@ const SETTINGS_LINKS = [
     title: "固定費の自動作成",
     description: "家賃やサブスクを、指定した支払日で毎月自動追加します。",
     icon: RefreshCw,
+  },
+  {
+    href: "/settings/tags",
+    title: "タグ管理",
+    description: "旅行・仕事・家族など、カテゴリとは別の分類を自由に作成できます。",
+    icon: Tag,
   },
 ];
 

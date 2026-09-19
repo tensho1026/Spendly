@@ -9,12 +9,12 @@ import {
 } from "@/components/ui/card";
 import { getCategoriesWithSub } from "@/lib/queries";
 import { dateInputToUtc, toDateInputValue } from "@/lib/format";
-import { getTemplates } from "@/lib/ledger";
+import { getTags, getTemplates } from "@/lib/ledger";
 export const dynamic = "force-dynamic";
 export default async function NewExpensePage({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const requested = (await searchParams).date ?? "";
   const period = dateInputToUtc(requested) ? requested : toDateInputValue(new Date());
-  const [categories, templates] = await Promise.all([getCategoriesWithSub(), getTemplates()]);
+  const [categories, templates, tags] = await Promise.all([getCategoriesWithSub(), getTemplates(), getTags()]);
   return (
     <div className="space-y-6">
       <Link href="/expenses" className="text-sm text-muted-foreground">
@@ -34,6 +34,7 @@ export default async function NewExpensePage({ searchParams }: { searchParams: P
             categories={categories}
             period={period}
             templates={templates}
+            tags={tags}
           />
         </CardContent>
       </Card>

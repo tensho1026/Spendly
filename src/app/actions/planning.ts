@@ -32,7 +32,8 @@ export async function saveBudgetsAction(_: ActionState, form: FormData): Promise
 export async function saveTemplateAction(_: ActionState, form: FormData): Promise<ActionState> {
   const parsed = templateSchema.safeParse({ id: String(form.get("id") ?? "") || undefined, categoryId: form.get("categoryId"), amount: form.get("amount"), memo: form.get("memo") });
   if (!parsed.success) return { ok: false, message: parsed.error.issues.map((issue) => issue.message).join(" / ") };
-  const { id, ...data } = parsed.data;
+  const { id, categoryId, amount, memo } = parsed.data;
+  const data = { categoryId, amount, memo };
   try {
     if (id) await prisma.expenseTemplate.update({ where: { id }, data });
     else await prisma.expenseTemplate.create({ data });

@@ -58,6 +58,7 @@ import {
   fixedSchema,
   incomeSchema,
   recurringFixedSchema,
+  tagSchema,
   parseItems,
   sumItems,
 } from "../src/lib/ledger-validation";
@@ -88,6 +89,13 @@ test("savings rate handles surplus, deficit and months without income", () => {
   assert.equal(savingsRate(300000, 240000), 20);
   assert.equal(savingsRate(200000, 250000), -25);
   assert.equal(savingsRate(0, 10000), null);
+});
+test("custom tags validate names and supported colors", () => {
+  assert.equal(tagSchema.safeParse({ name: " 旅行 ", color: "blue" }).success, true);
+  assert.equal(tagSchema.safeParse({ name: "", color: "blue" }).success, false);
+  assert.equal(tagSchema.safeParse({ name: "旅行", color: "rainbow" }).success, false);
+  const tagged = dailySchema.parse({ date: "2026-09-19", total: "1000", items: [{ ...row, tagIds: ["trip", "family"] }] });
+  assert.deepEqual(tagged.items[0].tagIds, ["trip", "family"]);
 });
 test("daily totals allow incomplete breakdowns, overages and zero-spend days", () => {
   for (const input of [

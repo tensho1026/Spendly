@@ -21,6 +21,7 @@ async function main() {
       await apply("prisma/migrations/20260919080000_daily_and_fixed/migration.sql");
       await apply("prisma/migrations/20260919113000_budgets_and_templates/migration.sql");
       await apply("prisma/migrations/20260919122000_income_and_recurring_fixed/migration.sql");
+      await apply("prisma/migrations/20260919141000_tags/migration.sql");
       const days = await tx.$queryRawUnsafe<{id:string;total:number}[]>(`SELECT "id","total" FROM "DailyExpense" ORDER BY "date"`);
       assert.deepEqual(days,[{id:"day_2026-09-01",total:3000},{id:"day_2026-09-02",total:500}]);
       const rows = await tx.$queryRawUnsafe<{id:string;dailyId:string;memo:string}[]>(`SELECT "id","dailyId","memo" FROM "Expense" ORDER BY "id"`);
@@ -37,6 +38,10 @@ async function main() {
       await tx.$executeRawUnsafe(`INSERT INTO "FixedExpense" ("id","month","categoryId","amount","dueDay","recurringId") VALUES ('generated','2026-09','test-category',80000,25,'rule')`);
       const cashflow = await tx.$queryRawUnsafe<{income:number;rules:number;generated:number}[]>(`SELECT (SELECT COUNT(*)::integer FROM "Income") AS income, (SELECT COUNT(*)::integer FROM "RecurringFixedExpense") AS rules, (SELECT COUNT(*)::integer FROM "FixedExpense" WHERE "recurringId"='rule') AS generated`);
       assert.deepEqual(cashflow[0], { income: 1, rules: 1, generated: 1 });
+      await tx.$executeRawUnsafe(`INSERT INTO "Tag" ("id","name","color","updatedAt") VALUES ('trip','trip','blue',NOW())`);
+      await tx.$executeRawUnsafe(`INSERT INTO "ExpenseTag" ("expenseId","tagId") VALUES ('third','trip')`);
+      const tagged = await tx.$queryRawUnsafe<{count:number}[]>(`SELECT COUNT(*)::integer AS count FROM "ExpenseTag"`);
+      assert.equal(tagged[0].count,1);
       await tx.$executeRawUnsafe(`DELETE FROM "DailyExpense" WHERE "id"='day_2026-09-01'`);
       const remaining = await tx.$queryRawUnsafe<{count:number}[]>(`SELECT COUNT(*)::integer AS count FROM "Expense"`);
       assert.equal(remaining[0].count,1);

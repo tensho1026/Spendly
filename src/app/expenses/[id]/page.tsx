@@ -7,6 +7,7 @@ import { formatDateJP, formatYen } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteExpenseDialog } from "@/components/expenses/delete-expense-dialog";
+import { colorClass } from "@/lib/tags";
 export const dynamic = "force-dynamic";
 export default async function DetailPage({
   params,
@@ -62,6 +63,7 @@ export default async function DetailPage({
                     {item.memo}
                   </p>
                 )}
+                {item.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{item.tags.map(({ tag }) => <span key={tag.id} className={`rounded-full border px-2 py-0.5 text-xs ${colorClass(tag.color)}`}>#{tag.name}</span>)}</div>}
               </li>
             ))}
           </ul>

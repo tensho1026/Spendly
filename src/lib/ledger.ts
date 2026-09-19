@@ -4,7 +4,7 @@ import { sumItems } from "@/lib/ledger-validation";
 
 const dailyInclude = {
   items: {
-    include: { category: true },
+    include: { category: true, tags: { include: { tag: true } } },
     orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
   },
 };
@@ -28,20 +28,21 @@ export async function getDaily(id: string) {
 }
 export async function getDays(
   month?: MonthParam,
-  filters: { categoryId?: string; keyword?: string } = {},
+  filters: { categoryId?: string; keyword?: string; tagId?: string } = {},
 ) {
   const range = month ? monthRange(month) : null;
   return prisma.dailyExpense.findMany({
     where: {
       date: range ? { gte: range.start, lt: range.end } : undefined,
       items:
-        filters.categoryId || filters.keyword
+        filters.categoryId || filters.keyword || filters.tagId
           ? {
               some: {
                 categoryId: filters.categoryId || undefined,
                 memo: filters.keyword
                   ? { contains: filters.keyword, mode: "insensitive" }
                   : undefined,
+                tags: filters.tagId ? { some: { tagId: filters.tagId } } : undefined,
               },
             }
           : undefined,
@@ -49,6 +50,9 @@ export async function getDays(
     include: dailyInclude,
     orderBy: { date: "desc" },
   });
+}
+export async function getTags() {
+  return prisma.tag.findMany({ orderBy: [{ name: "asc" }] });
 }
 export async function getFixed(month: string) {
   return prisma.fixedExpense.findMany({

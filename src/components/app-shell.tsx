@@ -12,6 +12,8 @@ import {
   Banknote,
   Plus,
   ArrowUpRight,
+  ChartNoAxesCombined,
+  Bell,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import { cn } from "@/lib/utils";
@@ -22,10 +24,12 @@ const links = [
   { href: "/income", label: "収入", icon: Banknote },
   { href: "/budgets", label: "月間予算", icon: Target },
   { href: "/fixed-expenses", label: "月の固定費", icon: CalendarDays },
+  { href: "/reports", label: "レポート", icon: ChartNoAxesCombined },
   { href: "/settings", label: "設定", icon: Settings },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+const mobileLinks = links.filter((link) => ["/dashboard","/expenses","/income","/reports","/settings"].includes(link.href));
+export function AppShell({ children, notificationCount = 0 }: { children: React.ReactNode; notificationCount?: number }) {
   const pathname = usePathname();
   return (
     <div className="min-h-dvh">
@@ -104,13 +108,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 "Spendly"}
             </span>
           </span>
-          <Link
-            href="/expenses/new"
-            className="flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium hover:bg-accent"
-          >
-            <Plus className="size-4 text-primary" />
-            支出を記録
-          </Link>
+          <div className="flex items-center gap-2"><Link href="/notifications" aria-label={`通知${notificationCount ? `${notificationCount}件` : ""}`} className="relative rounded-full border p-2 hover:bg-accent"><Bell className="size-4"/>{notificationCount>0&&<span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">{notificationCount>9?"9+":notificationCount}</span>}</Link><Link href="/expenses/new" className="flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium hover:bg-accent"><Plus className="size-4 text-primary" />支出を記録</Link></div>
         </header>
         <main
           id="main"
@@ -123,7 +121,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         aria-label="モバイルメニュー"
         className="fixed inset-x-0 bottom-0 z-20 flex border-t bg-white pb-[env(safe-area-inset-bottom)] md:hidden"
       >
-        {links.map(({ href, label, icon: Icon }) => (
+        {mobileLinks.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}

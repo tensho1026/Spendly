@@ -38,6 +38,10 @@ async function validateCategories(items: { categoryId: string }[]) {
     (await prisma.category.count({ where: { id: { in: ids } } })) === ids.length
   );
 }
+async function validateTags(items: { tagIds?: string[] }[]) {
+  const ids = [...new Set(items.flatMap((item) => item.tagIds ?? []))];
+  return ids.length === 0 || (await prisma.tag.count({ where: { id: { in: ids } } })) === ids.length;
+}
 function failure(error: unknown): ActionState {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002")
@@ -93,21 +97,25 @@ export async function saveDailyAction(
         ok: false,
         message: "存在しないカテゴリが含まれています。選び直してください。",
       };
-    const data = items.map((item, sortOrder) => ({ ...item, date, sortOrder }));
+    if (!(await validateTags(items))) return { ok: false, message: "存在しないタグが含まれています。選び直してください。" };
+    const data = items.map(({ tagIds, ...item }, sortOrder) => ({ ...item, tagIds, date, sortOrder }));
     const saved = await prisma.$transaction(async (tx) => {
+      const createItems = async (dailyId: string) => {
+        for (const item of data) {
+          const { tagIds, ...expense } = item;
+          await tx.expense.create({ data: { ...expense, dailyId, tags: { create: tagIds.map((tagId) => ({ tagId })) } } });
+        }
+      };
       if (id) {
         // Replacing the rows and updating the total must commit together.
         await tx.dailyExpense.update({ where: { id }, data: { date, total } });
         await tx.expense.deleteMany({ where: { dailyId: id } });
-        await tx.expense.createMany({
-          data: data.map((item) => ({ ...item, dailyId: id })),
-        });
+        await createItems(id);
         return { id };
       }
-      return tx.dailyExpense.create({
-        data: { date, total, items: { create: data } },
-        select: { id: true },
-      });
+      const day = await tx.dailyExpense.create({ data: { date, total }, select: { id: true } });
+      await createItems(day.id);
+      return day;
     });
     savedId = saved.id;
   } catch (error) {
@@ -145,7 +153,7 @@ export async function saveFixedAction(
       });
       await tx.fixedExpense.deleteMany({ where: { month } });
       await tx.fixedExpense.createMany({
-        data: items.map((item, sortOrder) => ({ ...item, month, sortOrder })),
+        data: items.map(({ categoryId, amount, memo, dueDay }, sortOrder) => ({ categoryId, amount, memo, dueDay, month, sortOrder })),
       });
     });
   } catch (error) {

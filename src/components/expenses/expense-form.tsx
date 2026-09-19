@@ -13,8 +13,8 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 
-type Item = { categoryId: string; amount: number; memo: string | null; dueDay?: number | null };
-type Row = { key: number; categoryId: string; amount: string; memo: string; dueDay: string };
+type Item = { categoryId: string; amount: number; memo: string | null; dueDay?: number | null; tagIds?: string[]; tags?: { tagId: string }[] };
+type Row = { key: number; categoryId: string; amount: string; memo: string; dueDay: string; tagIds: string[] };
 type Props = {
   mode: "daily" | "fixed";
   categories: { id: string; name: string }[];
@@ -22,6 +22,7 @@ type Props = {
   record?: { id: string; total: number; items: Item[] };
   items?: Item[];
   templates?: (Item & { id: string; category: { name: string } })[];
+  tags?: { id: string; name: string; color: string }[];
 };
 const normalize = (value: string) =>
   value
@@ -37,6 +38,7 @@ export function ExpenseForm({
   record,
   items = [],
   templates = [],
+  tags = [],
 }: Props) {
   const [state, action, pending] = useActionState(
     mode === "daily" ? saveDailyAction : saveFixedAction,
@@ -51,6 +53,7 @@ export function ExpenseForm({
       amount: String(item.amount),
       memo: item.memo ?? "",
       dueDay: item.dueDay ? String(item.dueDay) : "",
+      tagIds: item.tagIds ?? item.tags?.map((tag) => tag.tagId) ?? [],
     })),
   );
   const [nextKey, setNextKey] = useState(rows.length);
@@ -73,7 +76,7 @@ export function ExpenseForm({
     );
   }
   function addItem(item?: Item) {
-    setRows((previous) => [...previous, { key: nextKey, categoryId: item?.categoryId ?? "", amount: item ? String(item.amount) : "", memo: item?.memo ?? "", dueDay: item?.dueDay ? String(item.dueDay) : "" }]);
+    setRows((previous) => [...previous, { key: nextKey, categoryId: item?.categoryId ?? "", amount: item ? String(item.amount) : "", memo: item?.memo ?? "", dueDay: item?.dueDay ? String(item.dueDay) : "", tagIds: item?.tagIds ?? [] }]);
     setNextKey((value) => value + 1);
     setChanged(true);
   }
@@ -90,11 +93,12 @@ export function ExpenseForm({
         type="hidden"
         name="items"
         value={JSON.stringify(
-          rows.map(({ categoryId, amount, memo, dueDay }) => ({
+          rows.map(({ categoryId, amount, memo, dueDay, tagIds }) => ({
             categoryId,
             amount,
             memo,
             ...(mode === "fixed" ? { dueDay } : {}),
+            ...(mode === "daily" ? { tagIds } : {}),
           })),
         )}
       />
@@ -267,6 +271,12 @@ export function ExpenseForm({
                   <Label htmlFor={`due-day-${row.key}`}>支払日 <span className="text-xs text-muted-foreground">任意</span></Label>
                   <Input id={`due-day-${row.key}`} aria-label={`${index + 1}行目の支払日`} inputMode="numeric" placeholder="例: 25" value={row.dueDay} onChange={(event) => { setChanged(true); setRows((previous) => previous.map((item) => item.key === row.key ? { ...item, dueDay: normalize(event.target.value).slice(0, 2) } : item)); }} />
                 </div>
+              )}
+              {mode === "daily" && tags.length > 0 && (
+                <details className="rounded-lg border border-dashed p-3">
+                  <summary className="cursor-pointer text-sm font-medium">タグを追加{row.tagIds.length ? `（${row.tagIds.length}個）` : ""}</summary>
+                  <div className="mt-3 flex flex-wrap gap-2">{tags.map((tag) => <label key={tag.id} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs ${row.tagIds.includes(tag.id) ? "border-primary bg-secondary text-primary" : "bg-background text-muted-foreground"}`}><input type="checkbox" className="sr-only" checked={row.tagIds.includes(tag.id)} onChange={(event) => { setChanged(true); setRows((previous) => previous.map((item) => item.key === row.key ? { ...item, tagIds: event.target.checked ? [...item.tagIds, tag.id] : item.tagIds.filter((id) => id !== tag.id) } : item)); }} />#{tag.name}</label>)}</div>
+                </details>
               )}
             </div>
           ))}

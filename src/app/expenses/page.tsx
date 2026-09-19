@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import { getDays } from "@/lib/ledger";
+import { getDays, getTags } from "@/lib/ledger";
 import { getCategoriesWithSub } from "@/lib/queries";
 import { formatYen } from "@/lib/format";
 import { tryParseMonthParam } from "@/lib/month";
@@ -20,10 +20,12 @@ export default async function ExpensesPage({
     (Array.isArray(value) ? value[0] : value)?.trim() ?? "";
   const month = first(params.month),
     categoryId = first(params.categoryId),
-    keyword = first(params.keyword);
-  const [days, categories] = await Promise.all([
-    getDays(tryParseMonthParam(month) ?? undefined, { categoryId, keyword }),
+    keyword = first(params.keyword),
+    tagId = first(params.tagId);
+  const [days, categories, tags] = await Promise.all([
+    getDays(tryParseMonthParam(month) ?? undefined, { categoryId, keyword, tagId }),
     getCategoriesWithSub(),
+    getTags(),
   ]);
   return (
     <div className="space-y-6">
@@ -44,7 +46,7 @@ export default async function ExpensesPage({
       </div>
       <form
         action="/expenses"
-        className="grid items-end gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 lg:grid-cols-4"
+        className="grid items-end gap-3 rounded-xl border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5"
       >
         <div className="space-y-2">
           <Label htmlFor="month">月</Label>
@@ -56,6 +58,7 @@ export default async function ExpensesPage({
             defaultValue={month}
           />
         </div>
+        <div className="space-y-2"><Label htmlFor="tagId">タグ</Label><NativeSelect key={tagId} id="tagId" name="tagId" defaultValue={tagId}><option value="">すべて</option>{tags.map((tag)=><option key={tag.id} value={tag.id}>#{tag.name}</option>)}</NativeSelect></div>
         <div className="space-y-2">
           <Label htmlFor="categoryId">カテゴリ</Label>
           <NativeSelect
@@ -92,7 +95,7 @@ export default async function ExpensesPage({
           </Button>
         </div>
       </form>
-      {(categoryId || keyword) && (
+      {(categoryId || keyword || tagId) && (
         <p className="text-xs text-muted-foreground">
           一致する内訳を含む日を表示しています。金額は、その日全体の合計です。
         </p>
