@@ -21,6 +21,7 @@ type Props = {
   period: string;
   record?: { id: string; total: number; items: Item[] };
   items?: Item[];
+  templates?: (Item & { id: string; category: { name: string } })[];
 };
 const normalize = (value: string) =>
   value
@@ -35,6 +36,7 @@ export function ExpenseForm({
   period,
   record,
   items = [],
+  templates = [],
 }: Props) {
   const [state, action, pending] = useActionState(
     mode === "daily" ? saveDailyAction : saveFixedAction,
@@ -68,6 +70,11 @@ export function ExpenseForm({
         row.key === key ? { ...row, [field]: value } : row,
       ),
     );
+  }
+  function addItem(item?: Item) {
+    setRows((previous) => [...previous, { key: nextKey, categoryId: item?.categoryId ?? "", amount: item ? String(item.amount) : "", memo: item?.memo ?? "" }]);
+    setNextKey((value) => value + 1);
+    setChanged(true);
   }
   return (
     <form
@@ -157,6 +164,12 @@ export function ExpenseForm({
               カテゴリ・金額・メモ
             </span>
           </div>
+          {mode === "daily" && templates.length > 0 && (
+            <div className="rounded-xl bg-muted/50 p-4">
+              <p className="mb-3 text-xs font-semibold text-muted-foreground">よく使う内訳から追加</p>
+              <div className="flex flex-wrap gap-2">{templates.map((template) => <Button key={template.id} type="button" variant="outline" size="sm" onClick={() => addItem(template)} disabled={rows.length >= 100}>{template.memo || template.category.name} · {formatYen(template.amount)}</Button>)}</div>
+            </div>
+          )}
           {rows.length === 0 && (
             <p className="rounded-xl border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
               {mode === "daily"
@@ -255,12 +268,7 @@ export function ExpenseForm({
             className="w-full border-dashed"
             disabled={categories.length === 0 || rows.length >= 100}
             onClick={() => {
-              setRows([
-                ...rows,
-                { key: nextKey, categoryId: "", amount: "", memo: "" },
-              ]);
-              setNextKey(nextKey + 1);
-              setChanged(true);
+              addItem();
             }}
           >
             <Plus className="size-4" />

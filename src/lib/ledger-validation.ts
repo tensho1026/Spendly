@@ -44,6 +44,16 @@ export const fixedSchema = z.object({
     ),
   items: itemsSchema,
 });
+export const budgetSchema = z.object({
+  month: z.string().refine((value) => tryParseMonthParam(value) !== null, "正しい月を指定してください"),
+  budgets: z.array(z.object({
+    categoryId: z.string().trim().min(1, "カテゴリを選択してください"),
+    amount: money(0),
+  })).max(100, "予算は100件以内で入力してください"),
+});
+export const templateSchema = ledgerItemSchema.extend({
+  id: z.string().optional(),
+});
 
 export function parseItems(value: FormDataEntryValue | null): unknown {
   if (typeof value !== "string") return null;

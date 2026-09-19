@@ -19,12 +19,17 @@ async function main() {
       await tx.$executeRawUnsafe(`INSERT INTO "Category" ("id","name","updatedAt") VALUES ('test-category','test',NOW())`);
       await tx.$executeRawUnsafe(`INSERT INTO "Expense" ("id","amount","date","categoryId","memo","updatedAt") VALUES ('first',1000,'2026-08-31 15:00:00','test-category','preserved memo',NOW()),('second',2000,'2026-09-01 14:59:59','test-category',NULL,NOW()),('third',500,'2026-09-01 15:00:00','test-category',NULL,NOW())`);
       await apply("prisma/migrations/20260919080000_daily_and_fixed/migration.sql");
+      await apply("prisma/migrations/20260919113000_budgets_and_templates/migration.sql");
       const days = await tx.$queryRawUnsafe<{id:string;total:number}[]>(`SELECT "id","total" FROM "DailyExpense" ORDER BY "date"`);
       assert.deepEqual(days,[{id:"day_2026-09-01",total:3000},{id:"day_2026-09-02",total:500}]);
       const rows = await tx.$queryRawUnsafe<{id:string;dailyId:string;memo:string}[]>(`SELECT "id","dailyId","memo" FROM "Expense" ORDER BY "id"`);
       assert.equal(rows.length,3);
       assert.equal(rows[0].memo,"preserved memo");
       assert.equal(rows[0].dailyId,"day_2026-09-01");
+      await tx.$executeRawUnsafe(`INSERT INTO "CategoryBudget" ("id","month","categoryId","amount","updatedAt") VALUES ('budget','2026-09','test-category',30000,NOW())`);
+      await tx.$executeRawUnsafe(`INSERT INTO "ExpenseTemplate" ("id","categoryId","amount","memo","updatedAt") VALUES ('template','test-category',1000,'lunch',NOW())`);
+      const planning = await tx.$queryRawUnsafe<{budgets:number;templates:number}[]>(`SELECT (SELECT COUNT(*)::integer FROM "CategoryBudget") AS budgets, (SELECT COUNT(*)::integer FROM "ExpenseTemplate") AS templates`);
+      assert.deepEqual(planning[0], { budgets: 1, templates: 1 });
       await tx.$executeRawUnsafe(`DELETE FROM "DailyExpense" WHERE "id"='day_2026-09-01'`);
       const remaining = await tx.$queryRawUnsafe<{count:number}[]>(`SELECT COUNT(*)::integer AS count FROM "Expense"`);
       assert.equal(remaining[0].count,1);

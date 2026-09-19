@@ -7,6 +7,7 @@ import {
   formatYen,
 } from "../src/lib/format";
 import { monthRange, shiftMonth, tryParseMonthParam } from "../src/lib/month";
+import { buildCalendarDays, combineCategorySpend, percentage } from "../src/lib/planning";
 import { categoryNameSchema } from "../src/lib/validations";
 
 test("JST midnight is persisted without moving the calendar date", () => {
@@ -139,4 +140,32 @@ test("malformed or oversized item lists are rejected", () => {
     }).success,
     false,
   );
+});
+
+test("category spending combines daily breakdowns and fixed costs", () => {
+  const rows = combineCategorySpend(
+    [{ categoryId: "food", name: "食費", amount: 1200 }],
+    [{ categoryId: "food", name: "食費", amount: 800 }, { categoryId: "rent", name: "家賃", amount: 50000 }],
+  );
+  assert.deepEqual(rows, [
+    { categoryId: "rent", name: "家賃", amount: 50000 },
+    { categoryId: "food", name: "食費", amount: 2000 },
+  ]);
+  assert.equal(percentage(33000, 30000), 110);
+  assert.equal(percentage(1000, 0), 0);
+});
+
+test("calendar marks matched, mismatched, missing and future days", () => {
+  const cells = buildCalendarDays(
+    { year: 2026, month: 9 },
+    [
+      { id: "one", date: "2026-08-31T15:00:00.000Z", total: 1000, itemTotal: 1000 },
+      { id: "two", date: "2026-09-01T15:00:00.000Z", total: 2000, itemTotal: 1500 },
+    ],
+    new Date("2026-09-03T03:00:00.000Z"),
+  ).filter((cell) => cell !== null);
+  assert.equal(cells[0].status, "matched");
+  assert.equal(cells[1].status, "mismatch");
+  assert.equal(cells[2].status, "missing");
+  assert.equal(cells[3].status, "future");
 });

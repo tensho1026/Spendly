@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { dateInputToUtc } from "@/lib/format";
 import { dailySchema, fixedSchema, parseItems } from "@/lib/ledger-validation";
+import { shiftMonth, tryParseMonthParam, formatMonthParam } from "@/lib/month";
 import type { ActionState } from "@/lib/action-state";
 
 function refresh() {
@@ -13,6 +14,23 @@ function refresh() {
   revalidatePath("/dashboard");
   revalidatePath("/fixed-expenses");
   revalidatePath("/settings/categories");
+  revalidatePath("/budgets");
+}
+
+export async function copyPreviousFixedAction(form: FormData) {
+  const month = String(form.get("month") ?? "");
+  const parsed = tryParseMonthParam(month);
+  if (!parsed) redirect("/fixed-expenses?error=invalid-month");
+  const previous = formatMonthParam(shiftMonth(parsed, -1));
+  const source = await prisma.fixedExpense.findMany({ where: { month: previous }, orderBy: { sortOrder: "asc" } });
+  if (!source.length) redirect(`/fixed-expenses?month=${month}&error=no-source`);
+  await prisma.$transaction(async (tx) => {
+    await tx.fixedMonth.upsert({ where: { month }, create: { month }, update: { updatedAt: new Date() } });
+    await tx.fixedExpense.deleteMany({ where: { month } });
+    await tx.fixedExpense.createMany({ data: source.map(({ categoryId, amount, memo, sortOrder }) => ({ month, categoryId, amount, memo, sortOrder })) });
+  });
+  refresh();
+  redirect(`/fixed-expenses?month=${month}&copied=1`);
 }
 async function validateCategories(items: { categoryId: string }[]) {
   const ids = [...new Set(items.map((item) => item.categoryId))];

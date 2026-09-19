@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, ArrowDown, ArrowUp, Minus, Target } from "lucide-react";
 import { CategoryChart } from "@/components/dashboard/category-chart";
 import { CategoryBreakdown } from "@/components/dashboard/category-breakdown";
 import { MonthSwitcher } from "@/components/dashboard/month-switcher";
 import { DailyList } from "@/components/expenses/daily-list";
+import { InputCalendar } from "@/components/dashboard/input-calendar";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,10 +13,11 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { getDays, getFixed, summarizeDays } from "@/lib/ledger";
+import { getBudgets, getDays, getFixed, summarizeDays } from "@/lib/ledger";
 import { sumItems } from "@/lib/ledger-validation";
 import { formatMonthJP, formatYen } from "@/lib/format";
-import { currentMonth, parseMonthParam, formatMonthParam } from "@/lib/month";
+import { currentMonth, parseMonthParam, formatMonthParam, shiftMonth } from "@/lib/month";
+import { combineCategorySpend, percentage } from "@/lib/planning";
 export const dynamic = "force-dynamic";
 export default async function DashboardPage({
   searchParams,
@@ -27,9 +29,16 @@ export default async function DashboardPage({
     Array.isArray(value) ? value[0] : value;
   const month = parseMonthParam(first(params.month)),
     period = formatMonthParam(month);
-  const [days, fixed] = await Promise.all([getDays(month), getFixed(period)]);
+  const previousMonth = shiftMonth(month, -1), previousPeriod = formatMonthParam(previousMonth);
+  const [days, fixed, budgets, previousDays, previousFixed] = await Promise.all([getDays(month), getFixed(period), getBudgets(period), getDays(previousMonth), getFixed(previousPeriod)]);
   const summary = summarizeDays(days),
     fixedTotal = sumItems(fixed);
+  const previousSummary = summarizeDays(previousDays), previousFixedTotal = sumItems(previousFixed);
+  const monthTotal = summary.total + fixedTotal, previousTotal = previousSummary.total + previousFixedTotal, monthDelta = monthTotal - previousTotal;
+  const currentCategorySpend = combineCategorySpend(summary.breakdown.map((row) => ({ ...row, amount: row.total })), fixed.map((row) => ({ categoryId: row.categoryId, name: row.category.name, amount: row.amount })));
+  const previousCategorySpend = combineCategorySpend(previousSummary.breakdown.map((row) => ({ ...row, amount: row.total })), previousFixed.map((row) => ({ categoryId: row.categoryId, name: row.category.name, amount: row.amount })));
+  const previousByCategory = new Map(previousCategorySpend.map((row) => [row.categoryId, row.amount]));
+  const usedByCategory = new Map(currentCategorySpend.map((row) => [row.categoryId, row.amount]));
   const selected = summary.breakdown.find(
     (item) => item.categoryId === first(params.category),
   );
@@ -62,7 +71,7 @@ export default async function DashboardPage({
         {[
           {
             label: "月の支出合計",
-            value: summary.total + fixedTotal,
+            value: monthTotal,
             note: "日々の支出 ＋ 固定費",
           },
           {
@@ -101,6 +110,15 @@ export default async function DashboardPage({
           </Card>
         ))}
       </div>
+      <Card>
+        <CardHeader><div className="flex flex-wrap items-center justify-between gap-2"><div><CardTitle className="text-base">前月との比較</CardTitle><CardDescription>{previousMonth.year}年{previousMonth.month}月の合計 {formatYen(previousTotal)} と比較</CardDescription></div><span className={`flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold ${monthDelta > 0 ? "bg-rose-50 text-rose-700" : monthDelta < 0 ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground"}`}>{monthDelta > 0 ? <ArrowUp className="size-4" /> : monthDelta < 0 ? <ArrowDown className="size-4" /> : <Minus className="size-4" />}{monthDelta === 0 ? "増減なし" : `前月より${formatYen(Math.abs(monthDelta))}${monthDelta > 0 ? "増加" : "減少"}`}</span></div></CardHeader>
+        <CardContent>{currentCategorySpend.length ? <div className="grid gap-2 sm:grid-cols-2">{currentCategorySpend.map((row) => { const delta = row.amount - (previousByCategory.get(row.categoryId) ?? 0); return <div key={row.categoryId} className="flex items-center justify-between rounded-lg border p-3 text-sm"><span>{row.name}</span><span className="text-right font-medium">{formatYen(row.amount)}<small className={`ml-2 ${delta > 0 ? "text-rose-600" : delta < 0 ? "text-emerald-600" : "text-muted-foreground"}`}>{delta === 0 ? "±0" : `${delta > 0 ? "+" : "-"}${formatYen(Math.abs(delta))}`}</small></span></div>; })}</div> : <p className="text-sm text-muted-foreground">比較できるカテゴリ別支出はまだありません。</p>}</CardContent>
+      </Card>
+      <Card>
+        <CardHeader><div className="flex items-center justify-between gap-2"><div><CardTitle className="flex items-center gap-2 text-base"><Target className="size-4 text-primary" />カテゴリ別予算</CardTitle><CardDescription>日々の内訳と固定費を合わせた使用状況です。</CardDescription></div><Link href={`/budgets?month=${period}`} className="text-sm text-primary">予算を設定 →</Link></div></CardHeader>
+        <CardContent>{budgets.length ? <div className="space-y-4">{budgets.map((budget) => { const used = usedByCategory.get(budget.categoryId) ?? 0, ratio = percentage(used, budget.amount), remaining = budget.amount - used; return <div key={budget.id}><div className="mb-2 flex flex-wrap justify-between gap-2 text-sm"><span className="font-medium">{budget.category.name}</span><span className={remaining < 0 ? "font-semibold text-rose-700" : "text-muted-foreground"}>{formatYen(used)} / {formatYen(budget.amount)} · {remaining < 0 ? `${formatYen(Math.abs(remaining))}超過` : `残り${formatYen(remaining)}`}</span></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full ${ratio > 100 ? "bg-rose-500" : ratio >= 80 ? "bg-amber-500" : "bg-primary"}`} style={{ width: `${Math.min(ratio, 100)}%` }} /></div><p className="mt-1 text-right text-xs text-muted-foreground">{ratio}%</p></div>; })}</div> : <p className="text-sm text-muted-foreground">この月の予算はまだ設定されていません。</p>}</CardContent>
+      </Card>
+      <Card><CardHeader><CardTitle className="text-base">入力状況カレンダー</CardTitle><CardDescription>金額を押すと記録を確認できます。未入力の日を押すと、その日の日付で入力を始めます。</CardDescription></CardHeader><CardContent><InputCalendar month={month} days={days.map((day) => ({ id: day.id, date: day.date, total: day.total, itemTotal: sumItems(day.items) }))} /></CardContent></Card>
       {mismatchedDays > 0 && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           合計と内訳に差額がある日が{mismatchedDays}

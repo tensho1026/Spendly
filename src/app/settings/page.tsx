@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Tags } from "lucide-react";
+import { ChevronRight, Tags, Zap } from "lucide-react";
 
 import {
   Card,
@@ -15,6 +15,12 @@ const SETTINGS_LINKS = [
     description:
       "日々の支出と固定費で使うカテゴリの追加・名前の変更・削除ができます。",
     icon: Tags,
+  },
+  {
+    href: "/settings/templates",
+    title: "よく使う内訳",
+    description: "昼食や電車など、よく入力するカテゴリ・金額・メモを登録できます。",
+    icon: Zap,
   },
 ];
 
