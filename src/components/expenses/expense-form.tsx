@@ -2,19 +2,21 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { Plus, Trash2, Save } from "lucide-react";
+import { Plus, Save } from "lucide-react";
 import { saveDailyAction, saveFixedAction } from "@/app/actions/expenses";
 import { initialActionState } from "@/lib/action-state";
 import { differenceLabel } from "@/lib/ledger-validation";
 import { formatYen } from "@/lib/format";
 import { Button } from "@/components/ui/button";
+import {
+  ExpenseItemRow,
+  type ExpenseFormRow,
+  type ExpenseRowField,
+} from "@/components/expenses/expense-item-row";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { NativeSelect } from "@/components/ui/native-select";
-import { Textarea } from "@/components/ui/textarea";
 
 type Item = { categoryId: string; amount: number; memo: string | null; dueDay?: number | null; tagIds?: string[]; tags?: { tagId: string }[] };
-type Row = { key: number; categoryId: string; amount: string; memo: string; dueDay: string; tagIds: string[] };
 type Props = {
   mode: "daily" | "fixed";
   categories: { id: string; name: string }[];
@@ -46,7 +48,7 @@ export function ExpenseForm({
   );
   const [date, setDate] = useState(period);
   const [total, setTotal] = useState(record ? String(record.total) : "");
-  const [rows, setRows] = useState<Row[]>(() =>
+  const [rows, setRows] = useState<ExpenseFormRow[]>(() =>
     (record?.items ?? items).map((item, index) => ({
       key: index,
       categoryId: item.categoryId,
@@ -65,7 +67,7 @@ export function ExpenseForm({
   const difference = (Number(total) || 0) - itemTotal;
   function changeRow(
     key: number,
-    field: "categoryId" | "amount" | "memo",
+    field: ExpenseRowField,
     value: string,
   ) {
     setChanged(true);
@@ -184,101 +186,38 @@ export function ExpenseForm({
             </p>
           )}
           {rows.map((row, index) => (
-            <div
+            <ExpenseItemRow
               key={row.key}
-              className="space-y-3 rounded-xl border bg-background/50 p-4"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  {index + 1}件目
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  aria-label={`${index + 1}行目を削除`}
-                  onClick={() => {
-                    setRows(rows.filter((item) => item.key !== row.key));
-                    setChanged(true);
-                  }}
-                >
-                  <Trash2 className="size-4" />
-                  削除
-                </Button>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor={`category-${row.key}`}>カテゴリ</Label>
-                  <NativeSelect
-                    id={`category-${row.key}`}
-                    aria-label={`${index + 1}行目のカテゴリ`}
-                    required
-                    value={row.categoryId}
-                    onChange={(event) =>
-                      changeRow(row.key, "categoryId", event.target.value)
-                    }
-                  >
-                    <option value="">カテゴリを選択</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor={`amount-${row.key}`}>金額（円）</Label>
-                  <Input
-                    id={`amount-${row.key}`}
-                    aria-label={`${index + 1}行目の金額`}
-                    inputMode="numeric"
-                    required
-                    placeholder="0"
-                    value={row.amount}
-                    onChange={(event) =>
-                      changeRow(
-                        row.key,
-                        "amount",
-                        normalize(event.target.value),
-                      )
-                    }
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor={`memo-${row.key}`}>
-                  メモ{" "}
-                  <span className="text-xs text-muted-foreground">任意</span>
-                </Label>
-                <Textarea
-                  id={`memo-${row.key}`}
-                  aria-label={`${index + 1}行目のメモ`}
-                  rows={2}
-                  maxLength={500}
-                  placeholder={
-                    mode === "daily"
-                      ? "例: 昼ごはん、週末の買い出し"
-                      : "例: 家賃、音楽サブスク"
-                  }
-                  value={row.memo}
-                  onChange={(event) =>
-                    changeRow(row.key, "memo", event.target.value)
-                  }
-                />
-              </div>
-              {mode === "fixed" && (
-                <div className="space-y-2">
-                  <Label htmlFor={`due-day-${row.key}`}>支払日 <span className="text-xs text-muted-foreground">任意</span></Label>
-                  <Input id={`due-day-${row.key}`} aria-label={`${index + 1}行目の支払日`} inputMode="numeric" placeholder="例: 25" value={row.dueDay} onChange={(event) => { setChanged(true); setRows((previous) => previous.map((item) => item.key === row.key ? { ...item, dueDay: normalize(event.target.value).slice(0, 2) } : item)); }} />
-                </div>
-              )}
-              {mode === "daily" && tags.length > 0 && (
-                <details className="rounded-lg border border-dashed p-3">
-                  <summary className="cursor-pointer text-sm font-medium">タグを追加{row.tagIds.length ? `（${row.tagIds.length}個）` : ""}</summary>
-                  <div className="mt-3 flex flex-wrap gap-2">{tags.map((tag) => <label key={tag.id} className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs ${row.tagIds.includes(tag.id) ? "border-primary bg-secondary text-primary" : "bg-background text-muted-foreground"}`}><input type="checkbox" className="sr-only" checked={row.tagIds.includes(tag.id)} onChange={(event) => { setChanged(true); setRows((previous) => previous.map((item) => item.key === row.key ? { ...item, tagIds: event.target.checked ? [...item.tagIds, tag.id] : item.tagIds.filter((id) => id !== tag.id) } : item)); }} />#{tag.name}</label>)}</div>
-                </details>
-              )}
-            </div>
+              row={row}
+              index={index}
+              mode={mode}
+              categories={categories}
+              tags={tags}
+              normalizeAmount={normalize}
+              onChange={(field, value) => changeRow(row.key, field, value)}
+              onDueDayChange={(dueDay) => {
+                setChanged(true);
+                setRows((previous) =>
+                  previous.map((item) =>
+                    item.key === row.key ? { ...item, dueDay } : item,
+                  ),
+                );
+              }}
+              onTagsChange={(tagIds) => {
+                setChanged(true);
+                setRows((previous) =>
+                  previous.map((item) =>
+                    item.key === row.key ? { ...item, tagIds } : item,
+                  ),
+                );
+              }}
+              onRemove={() => {
+                setRows((previous) =>
+                  previous.filter((item) => item.key !== row.key),
+                );
+                setChanged(true);
+              }}
+            />
           ))}
           <Button
             type="button"

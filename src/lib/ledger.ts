@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { monthRange, type MonthParam } from "@/lib/month";
 import { sumItems } from "@/lib/ledger-validation";
+import { missingRecurringRules } from "@/lib/recurring";
 
 const dailyInclude = {
   items: {
@@ -63,7 +64,7 @@ export async function getFixed(month: string) {
 }
 export async function ensureRecurringFixed(month: string) {
   await prisma.$transaction(async (tx) => {
-    const period = await tx.fixedMonth.upsert({
+    await tx.fixedMonth.upsert({
       where: { month },
       create: { month },
       update: {},
@@ -72,24 +73,19 @@ export async function ensureRecurringFixed(month: string) {
       where: {
         active: true,
         startMonth: { lte: month },
-        createdAt: period.recurringGeneratedAt
-          ? { gt: period.recurringGeneratedAt }
-          : undefined,
       },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
     if (rules.length) {
-      const existing = new Set(
-        (
-          await tx.fixedExpense.findMany({
-            where: { month, recurringId: { in: rules.map((rule) => rule.id) } },
-            select: { recurringId: true },
-          })
-        ).map((item) => item.recurringId),
-      );
+      const existing = await tx.fixedExpense.findMany({
+        where: { month, recurringId: { in: rules.map((rule) => rule.id) } },
+        select: { recurringId: true },
+      });
       await tx.fixedExpense.createMany({
-        data: rules
-          .filter((rule) => !existing.has(rule.id))
+        data: missingRecurringRules(
+          rules,
+          existing.map((item) => item.recurringId),
+        )
           .map((rule, index) => ({
             month,
             categoryId: rule.categoryId,

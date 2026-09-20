@@ -9,6 +9,9 @@ import {
 import { monthRange, shiftMonth, tryParseMonthParam } from "../src/lib/month";
 import { buildCalendarDays, combineCategorySpend, percentage } from "../src/lib/planning";
 import { savingsRate } from "../src/lib/cashflow";
+import { buildNotifications } from "../src/lib/notifications";
+import { missingRecurringRules } from "../src/lib/recurring";
+import { buildAnnualReport, buildWeeklyReport } from "../src/lib/reports";
 import { categoryNameSchema } from "../src/lib/validations";
 
 test("JST midnight is persisted without moving the calendar date", () => {
@@ -192,4 +195,126 @@ test("calendar marks matched, mismatched, missing and future days", () => {
   assert.equal(cells[1].status, "mismatch");
   assert.equal(cells[2].status, "missing");
   assert.equal(cells[3].status, "future");
+});
+
+test("recurring generation includes active rules that were enabled later", () => {
+  const rules = [
+    { id: "existing", amount: 1000 },
+    { id: "enabled-later", amount: 2000 },
+  ];
+  assert.deepEqual(missingRecurringRules(rules, ["existing"]), [rules[1]]);
+});
+
+test("annual reports preserve monthly, category, tag and year-over-year totals", () => {
+  const report = buildAnnualReport(
+    { year: 2026, month: 9 },
+    {
+      days: [
+        {
+          date: "2026-09-18T15:00:00.000Z",
+          total: 3000,
+          items: [
+            {
+              amount: 2500,
+              categoryId: "food",
+              category: { name: "食費" },
+              tags: [
+                { tagId: "trip", tag: { name: "旅行", color: "blue" } },
+              ],
+            },
+          ],
+        },
+      ],
+      fixed: [
+        {
+          month: "2026-09",
+          amount: 80000,
+          categoryId: "rent",
+          category: { name: "家賃" },
+        },
+      ],
+      incomes: [{ date: "2026-09-18T15:00:00.000Z", amount: 250000 }],
+      yearAgoDays: [{ total: 2000 }],
+      yearAgoFixed: [{ amount: 75000 }],
+      yearAgoIncomes: [{ amount: 240000 }],
+    },
+  );
+
+  assert.deepEqual(report.rows.at(-1), {
+    period: "2026-09",
+    label: "9月",
+    income: 250000,
+    expense: 83000,
+    balance: 167000,
+  });
+  assert.deepEqual(report.categories.slice(0, 2), [
+    { name: "家賃", total: 80000, average: 6667 },
+    { name: "食費", total: 2500, average: 208 },
+  ]);
+  assert.deepEqual(report.tags, [
+    { name: "旅行", color: "blue", total: 2500 },
+  ]);
+  assert.deepEqual(report.yoy, {
+    income: 10000,
+    expense: 6000,
+    balance: 4000,
+  });
+});
+
+test("weekly reports keep JST dates and aggregate category totals", () => {
+  const start = new Date("2026-09-13T15:00:00.000Z");
+  const report = buildWeeklyReport(
+    start,
+    [
+      {
+        date: "2026-09-14T15:00:00.000Z",
+        total: 1500,
+        items: [
+          {
+            amount: 1200,
+            categoryId: "food",
+            category: { name: "食費" },
+          },
+        ],
+      },
+    ],
+    [{ date: "2026-09-13T15:00:00.000Z", amount: 10000 }],
+  );
+
+  assert.equal(report.start, "2026-09-14");
+  assert.equal(report.end, "2026-09-20");
+  assert.equal(report.rows[0].income, 10000);
+  assert.equal(report.rows[1].expense, 1500);
+  assert.deepEqual(report.categories, [{ name: "食費", total: 1200 }]);
+});
+
+test("notifications retain budget, missing-day and due-date thresholds", () => {
+  const items = buildNotifications({
+    month: { year: 2026, month: 9 },
+    days: [],
+    fixed: [
+      {
+        id: "rent",
+        categoryId: "rent-category",
+        amount: 900,
+        memo: "家賃",
+        dueDay: 22,
+        category: { name: "住居費" },
+      },
+    ],
+    budgets: [
+      {
+        id: "rent-budget",
+        categoryId: "rent-category",
+        amount: 1000,
+        category: { name: "住居費" },
+      },
+    ],
+    now: new Date("2026-09-20T03:00:00.000Z"),
+  });
+
+  assert.deepEqual(
+    items.map((item) => item.id),
+    ["budget-80-rent-budget", "missing-days", "fixed-rent"],
+  );
 });

@@ -148,14 +148,20 @@ export async function deleteCategoryAction(
     }
 
     // 使用中のカテゴリを消すと支出の履歴が壊れるため、件数を見て止める。
+    const [expenses, fixedExpenses, templates, recurringFixedExpenses] =
+      await Promise.all([
+        prisma.expense.count({ where: { categoryId: id } }),
+        prisma.fixedExpense.count({ where: { categoryId: id } }),
+        prisma.expenseTemplate.count({ where: { categoryId: id } }),
+        prisma.recurringFixedExpense.count({ where: { categoryId: id } }),
+      ]);
     const used =
-      (await prisma.expense.count({ where: { categoryId: id } })) +
-      (await prisma.fixedExpense.count({ where: { categoryId: id } }));
+      expenses + fixedExpenses + templates + recurringFixedExpenses;
 
     if (used > 0) {
       return {
         ok: false,
-        message: `この大カテゴリを使っている支出が ${used} 件あるため削除できません`,
+        message: `この大カテゴリを使っている記録・設定が ${used} 件あるため削除できません`,
       };
     }
 
@@ -163,6 +169,16 @@ export async function deleteCategoryAction(
   } catch (error) {
     if (isRecordNotFound(error)) {
       return { ok: false, message: CATEGORY_NOT_FOUND };
+    }
+
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2003"
+    ) {
+      return {
+        ok: false,
+        message: "この大カテゴリは使用中のため削除できません",
+      };
     }
 
     console.error("大カテゴリの削除に失敗しました", error);

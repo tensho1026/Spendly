@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { AppShell } from "@/components/app-shell";
 import { getNotifications } from "@/lib/notifications";
 import "./globals.css";
@@ -14,7 +15,8 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const notificationCount=(await getNotifications()).length;
+  await connection();
+  const notificationCount = (await getNotifications()).length;
   return (
     <html lang="ja">
       <body>
