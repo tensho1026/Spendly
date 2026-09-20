@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ExpenseForm } from "@/components/expenses/expense-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDaily, getTemplates } from "@/lib/ledger";
+import { getDaily, getTags, getTemplates } from "@/lib/ledger";
 import { getCategoriesWithSub } from "@/lib/queries";
 import { toDateInputValue } from "@/lib/format";
 export const dynamic = "force-dynamic";
@@ -12,10 +12,11 @@ export default async function EditPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [day, categories, templates] = await Promise.all([
+  const [day, categories, templates, tags] = await Promise.all([
     getDaily(id),
     getCategoriesWithSub(),
     getTemplates(),
+    getTags(),
   ]);
   if (!day) notFound();
   return (
@@ -38,6 +39,7 @@ export default async function EditPage({
             period={toDateInputValue(day.date)}
             record={day}
             templates={templates}
+            tags={tags}
           />
         </CardContent>
       </Card>

@@ -23,11 +23,31 @@ model Expense {
   memo          String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  tags          ExpenseTag[]
 
   @@index([dailyId])
   @@index([date])
   @@index([categoryId])
   @@index([subcategoryId])
+}
+
+model Tag {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  color     String       @default("slate")
+  expenses  ExpenseTag[]
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model ExpenseTag {
+  expenseId String
+  tagId     String
+  expense   Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([expenseId, tagId])
+  @@index([tagId])
 }
 
 model Category {

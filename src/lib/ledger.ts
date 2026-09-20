@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { monthRange, type MonthParam } from "@/lib/month";
 import { sumItems } from "@/lib/ledger-validation";
+import { missingRecurringRules } from "@/lib/recurring";
 
 const dailyInclude = {
   items: {
-    include: { category: true },
+    include: { category: true, tags: { include: { tag: true } } },
     orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
   },
 };
@@ -28,20 +29,21 @@ export async function getDaily(id: string) {
 }
 export async function getDays(
   month?: MonthParam,
-  filters: { categoryId?: string; keyword?: string } = {},
+  filters: { categoryId?: string; keyword?: string; tagId?: string } = {},
 ) {
   const range = month ? monthRange(month) : null;
   return prisma.dailyExpense.findMany({
     where: {
       date: range ? { gte: range.start, lt: range.end } : undefined,
       items:
-        filters.categoryId || filters.keyword
+        filters.categoryId || filters.keyword || filters.tagId
           ? {
               some: {
                 categoryId: filters.categoryId || undefined,
                 memo: filters.keyword
                   ? { contains: filters.keyword, mode: "insensitive" }
                   : undefined,
+                tags: filters.tagId ? { some: { tagId: filters.tagId } } : undefined,
               },
             }
           : undefined,
@@ -49,6 +51,9 @@ export async function getDays(
     include: dailyInclude,
     orderBy: { date: "desc" },
   });
+}
+export async function getTags() {
+  return prisma.tag.findMany({ orderBy: [{ name: "asc" }] });
 }
 export async function getFixed(month: string) {
   return prisma.fixedExpense.findMany({
@@ -59,7 +64,7 @@ export async function getFixed(month: string) {
 }
 export async function ensureRecurringFixed(month: string) {
   await prisma.$transaction(async (tx) => {
-    const period = await tx.fixedMonth.upsert({
+    await tx.fixedMonth.upsert({
       where: { month },
       create: { month },
       update: {},
@@ -68,24 +73,19 @@ export async function ensureRecurringFixed(month: string) {
       where: {
         active: true,
         startMonth: { lte: month },
-        createdAt: period.recurringGeneratedAt
-          ? { gt: period.recurringGeneratedAt }
-          : undefined,
       },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
     if (rules.length) {
-      const existing = new Set(
-        (
-          await tx.fixedExpense.findMany({
-            where: { month, recurringId: { in: rules.map((rule) => rule.id) } },
-            select: { recurringId: true },
-          })
-        ).map((item) => item.recurringId),
-      );
+      const existing = await tx.fixedExpense.findMany({
+        where: { month, recurringId: { in: rules.map((rule) => rule.id) } },
+        select: { recurringId: true },
+      });
       await tx.fixedExpense.createMany({
-        data: rules
-          .filter((rule) => !existing.has(rule.id))
+        data: missingRecurringRules(
+          rules,
+          existing.map((item) => item.recurringId),
+        )
           .map((rule, index) => ({
             month,
             categoryId: rule.categoryId,

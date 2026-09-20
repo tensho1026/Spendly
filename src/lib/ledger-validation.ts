@@ -20,6 +20,7 @@ export const ledgerItemSchema = z.object({
     .trim()
     .max(500, "メモは500文字以内で入力してください")
     .transform((value) => value || null),
+  tagIds: z.array(z.string().trim().min(1)).max(20, "タグは1件の内訳につき20個までです").default([]),
 });
 const itemsSchema = z
   .array(ledgerItemSchema)
@@ -71,6 +72,11 @@ export const recurringFixedSchema = z.object({
   dueDay: z.coerce.number().int().min(1, "支払日は1〜31日で入力してください").max(31, "支払日は1〜31日で入力してください"),
   startMonth: z.string().refine((value) => tryParseMonthParam(value) !== null, "正しい開始月を指定してください"),
   active: z.coerce.boolean(),
+});
+export const tagSchema = z.object({
+  id: z.string().optional(),
+  name: z.string().trim().min(1, "タグ名を入力してください").max(20, "タグ名は20文字以内で入力してください"),
+  color: z.enum(["slate", "blue", "emerald", "amber", "rose", "violet"]),
 });
 
 export function parseItems(value: FormDataEntryValue | null): unknown {
