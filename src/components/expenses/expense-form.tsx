@@ -48,16 +48,35 @@ export function ExpenseForm({
   );
   const [date, setDate] = useState(period);
   const [total, setTotal] = useState(record ? String(record.total) : "");
-  const [rows, setRows] = useState<ExpenseFormRow[]>(() =>
-    (record?.items ?? items).map((item, index) => ({
-      key: index,
-      categoryId: item.categoryId,
-      amount: String(item.amount),
-      memo: item.memo ?? "",
-      dueDay: item.dueDay ? String(item.dueDay) : "",
-      tagIds: item.tagIds ?? item.tags?.map((tag) => tag.tagId) ?? [],
-    })),
-  );
+  const [rows, setRows] = useState<ExpenseFormRow[]>(() => {
+    const existingItems = record?.items ?? items;
+    if (existingItems.length > 0) {
+      return existingItems.map((item, index) => ({
+        key: index,
+        categoryId: item.categoryId,
+        amount: String(item.amount),
+        memo: item.memo ?? "",
+        dueDay: item.dueDay ? String(item.dueDay) : "",
+        tagIds: item.tagIds ?? item.tags?.map((tag) => tag.tagId) ?? [],
+      }));
+    }
+
+    if (mode !== "daily" || categories.length === 0) return [];
+
+    const defaultCategoryId =
+      categories.find((category) => category.name === "食費")?.id ??
+      categories[0].id;
+    return [
+      {
+        key: 0,
+        categoryId: defaultCategoryId,
+        amount: "",
+        memo: "",
+        dueDay: "",
+        tagIds: [],
+      },
+    ];
+  });
   const [nextKey, setNextKey] = useState(rows.length);
   const [changed, setChanged] = useState(false);
   const itemTotal = rows.reduce(
