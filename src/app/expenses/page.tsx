@@ -1,15 +1,24 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Plus, Search } from "lucide-react";
 import { DailyList } from "@/components/expenses/daily-list";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
-import { getDays, getTags } from "@/lib/ledger";
+import { getDaysPage, getTags } from "@/lib/ledger";
 import { getCategoriesWithSub } from "@/lib/queries";
 import { formatYen } from "@/lib/format";
 import { tryParseMonthParam } from "@/lib/month";
 export const dynamic = "force-dynamic";
+
+function parsePage(value: string) {
+  const page = Number(value);
+  return /^\d+$/.test(value) && Number.isSafeInteger(page) && page >= 1 && page <= 10000
+    ? page
+    : 1;
+}
+
 export default async function ExpensesPage({
   searchParams,
 }: {
@@ -22,19 +31,30 @@ export default async function ExpensesPage({
     categoryId = first(params.categoryId),
     keyword = first(params.keyword),
     tagId = first(params.tagId);
-  const [days, categories, tags] = await Promise.all([
-    getDays(tryParseMonthParam(month) ?? undefined, { categoryId, keyword, tagId }),
+  const page = parsePage(first(params.page));
+  const [result, categories, tags] = await Promise.all([
+    getDaysPage(tryParseMonthParam(month) ?? undefined, { categoryId, keyword, tagId }, page),
     getCategoriesWithSub(),
     getTags(),
   ]);
+  const pageHref = (number: number) => {
+    const query = new URLSearchParams();
+    if (month) query.set("month", month);
+    if (tagId) query.set("tagId", tagId);
+    if (categoryId) query.set("categoryId", categoryId);
+    if (keyword) query.set("keyword", keyword);
+    if (number > 1) query.set("page", String(number));
+    const value = query.toString();
+    return value ? `/expenses?${value}` : "/expenses";
+  };
+  if (page > result.totalPages) redirect(pageHref(result.totalPages));
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">日々の支出</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            {days.length}日分 / 日別合計の合計{" "}
-            {formatYen(days.reduce((sum, day) => sum + day.total, 0))}
+            {result.count}日分 / 日別合計の合計 {formatYen(result.total)}
           </p>
         </div>
         <Button asChild>
@@ -100,7 +120,14 @@ export default async function ExpensesPage({
           一致する内訳を含む日を表示しています。金額は、その日全体の合計です。
         </p>
       )}
-      <DailyList days={days} />
+      <DailyList days={result.days} />
+      {result.totalPages > 1 && (
+        <nav aria-label="支出一覧のページ" className="flex items-center justify-between gap-3 text-sm">
+          {page > 1 ? <Link href={pageHref(page - 1)} className="font-medium text-primary">← 前のページ</Link> : <span />}
+          <span>{page} / {result.totalPages} ページ</span>
+          {page < result.totalPages ? <Link href={pageHref(page + 1)} className="font-medium text-primary">次のページ →</Link> : <span />}
+        </nav>
+      )}
     </div>
   );
 }

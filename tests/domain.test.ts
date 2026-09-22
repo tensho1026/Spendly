@@ -234,9 +234,7 @@ test("annual reports preserve monthly, category, tag and year-over-year totals",
         },
       ],
       incomes: [{ date: "2026-09-18T15:00:00.000Z", amount: 250000 }],
-      yearAgoDays: [{ total: 2000 }],
-      yearAgoFixed: [{ amount: 75000 }],
-      yearAgoIncomes: [{ amount: 240000 }],
+      yearAgoTotals: { income: 240000, expense: 77000 },
     },
   );
 

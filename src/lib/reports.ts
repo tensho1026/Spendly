@@ -36,9 +36,7 @@ type AnnualReportInput = {
   days: AnnualDay[];
   fixed: FixedReportItem[];
   incomes: DatedAmount[];
-  yearAgoDays: { total: number }[];
-  yearAgoFixed: { amount: number }[];
-  yearAgoIncomes: { amount: number }[];
+  yearAgoTotals: { income: number; expense: number };
 };
 
 export function buildAnnualReport(
@@ -112,12 +110,7 @@ export function buildAnnualReport(
   }
 
   const current = rows.at(-1)!;
-  const previousYear = {
-    income: input.yearAgoIncomes.reduce((sum, item) => sum + item.amount, 0),
-    expense:
-      input.yearAgoDays.reduce((sum, day) => sum + day.total, 0) +
-      input.yearAgoFixed.reduce((sum, item) => sum + item.amount, 0),
-  };
+  const previousYear = input.yearAgoTotals;
 
   return {
     rows,
@@ -158,28 +151,48 @@ export async function getAnnualReport(endMonth: MonthParam) {
     await Promise.all([
       prisma.dailyExpense.findMany({
         where: { date: { gte: start, lt: end } },
-        include: {
+        select: {
+          date: true,
+          total: true,
           items: {
-            include: {
-              category: true,
-              tags: { include: { tag: true } },
+            select: {
+              amount: true,
+              categoryId: true,
+              category: { select: { name: true } },
+              tags: {
+                select: {
+                  tagId: true,
+                  tag: { select: { name: true, color: true } },
+                },
+              },
             },
           },
         },
       }),
       prisma.fixedExpense.findMany({
         where: { month: { in: periods } },
-        include: { category: true },
-      }),
-      prisma.income.findMany({ where: { date: { gte: start, lt: end } } }),
-      prisma.dailyExpense.findMany({
-        where: { date: { gte: yearAgoRange.start, lt: yearAgoRange.end } },
-      }),
-      prisma.fixedExpense.findMany({
-        where: { month: formatMonthParam(yearAgo) },
+        select: {
+          month: true,
+          amount: true,
+          categoryId: true,
+          category: { select: { name: true } },
+        },
       }),
       prisma.income.findMany({
+        where: { date: { gte: start, lt: end } },
+        select: { date: true, amount: true },
+      }),
+      prisma.dailyExpense.aggregate({
         where: { date: { gte: yearAgoRange.start, lt: yearAgoRange.end } },
+        _sum: { total: true },
+      }),
+      prisma.fixedExpense.aggregate({
+        where: { month: formatMonthParam(yearAgo) },
+        _sum: { amount: true },
+      }),
+      prisma.income.aggregate({
+        where: { date: { gte: yearAgoRange.start, lt: yearAgoRange.end } },
+        _sum: { amount: true },
       }),
     ]);
 
@@ -187,9 +200,10 @@ export async function getAnnualReport(endMonth: MonthParam) {
     days,
     fixed,
     incomes,
-    yearAgoDays,
-    yearAgoFixed,
-    yearAgoIncomes,
+    yearAgoTotals: {
+      income: yearAgoIncomes._sum.amount ?? 0,
+      expense: (yearAgoDays._sum.total ?? 0) + (yearAgoFixed._sum.amount ?? 0),
+    },
   });
 }
 

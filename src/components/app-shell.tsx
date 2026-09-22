@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -13,7 +14,6 @@ import {
   Plus,
   ArrowUpRight,
   ChartNoAxesCombined,
-  Bell,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,7 @@ const links = [
 ];
 
 const mobileLinks = links.filter((link) => ["/dashboard","/expenses","/income","/reports","/settings"].includes(link.href));
-export function AppShell({ children, notificationCount = 0 }: { children: React.ReactNode; notificationCount?: number }) {
+export function AppShell({ children, notificationLink }: { children: ReactNode; notificationLink: ReactNode }) {
   const pathname = usePathname();
   return (
     <div className="min-h-dvh">
@@ -108,7 +108,7 @@ export function AppShell({ children, notificationCount = 0 }: { children: React.
                 "Spendly"}
             </span>
           </span>
-          <div className="flex items-center gap-2"><Link href="/notifications" aria-label={`通知${notificationCount ? `${notificationCount}件` : ""}`} className="relative rounded-full border p-2 hover:bg-accent"><Bell className="size-4"/>{notificationCount>0&&<span className="absolute -right-1 -top-1 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-white">{notificationCount>9?"9+":notificationCount}</span>}</Link><Link href="/expenses/new" className="flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium hover:bg-accent"><Plus className="size-4 text-primary" />支出を記録</Link></div>
+          <div className="flex items-center gap-2">{notificationLink}<Link href="/expenses/new" className="flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium hover:bg-accent"><Plus className="size-4 text-primary" />支出を記録</Link></div>
         </header>
         <main
           id="main"
