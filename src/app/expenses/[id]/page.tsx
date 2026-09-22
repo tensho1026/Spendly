@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { ArrowRight, Pencil } from "lucide-react";
 import { getDaily } from "@/lib/ledger";
 import { differenceLabel, sumItems } from "@/lib/ledger-validation";
-import { formatDateJP, formatYen } from "@/lib/format";
+import { formatDateJP, formatYen, toDateInputValue } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DeleteExpenseDialog } from "@/components/expenses/delete-expense-dialog";
@@ -18,6 +18,9 @@ export default async function DetailPage({
   if (!day) notFound();
   const itemTotal = sumItems(day.items),
     difference = day.total - itemTotal;
+  const nextDate = new Date(day.date);
+  nextDate.setUTCDate(nextDate.getUTCDate() + 1);
+  const nextDateInput = toDateInputValue(nextDate);
   return (
     <div className="space-y-6">
       <Link href="/expenses" className="text-sm text-muted-foreground">
@@ -25,12 +28,20 @@ export default async function DetailPage({
       </Link>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">{formatDateJP(day.date)}</h1>
-        <Button asChild>
-          <Link href={`/expenses/${day.id}/edit`}>
-            <Pencil className="size-4" />
-            合計・内訳を編集
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href={`/expenses/new?date=${nextDateInput}`}>
+              <ArrowRight className="size-4" />
+              次の日の収支を入れる
+            </Link>
+          </Button>
+          <Button asChild>
+            <Link href={`/expenses/${day.id}/edit`}>
+              <Pencil className="size-4" />
+              合計・内訳を編集
+            </Link>
+          </Button>
+        </div>
       </div>
       <Card>
         <CardHeader>
