@@ -47,6 +47,8 @@ npm start
 
 GitHub Actions でも lint・型チェック・テスト・ビルドを実行します。ユニットテストは日付境界、金額上限、入力検証を確認し、データベースを変更しません。
 
+Vercel の build では、`vercel.json` の設定により `DIRECT_URL` を使って `prisma migrate deploy` を先に実行します。Vercel の Production と Preview の環境変数に、アプリ用の `DATABASE_URL` とマイグレーション用の直接接続先 `DIRECT_URL` を登録してください。
+
 ## 運用範囲
 
 単一ユーザーが localhost で使う構成です。標準の起動コマンドは `127.0.0.1` に限定して待ち受けます。ログイン機能・ユーザー間のデータ分離は実装していないため、一般公開する場合は認証・アクセス制御を追加してください。
