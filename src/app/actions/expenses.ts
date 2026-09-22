@@ -100,23 +100,37 @@ export async function saveDailyAction(
     if (!(await validateTags(items))) return { ok: false, message: "存在しないタグが含まれています。選び直してください。" };
     const data = items.map(({ tagIds, ...item }, sortOrder) => ({ ...item, tagIds, date, sortOrder }));
     const saved = await prisma.$transaction(async (tx) => {
-      const createItems = async (dailyId: string) => {
-        for (const item of data) {
-          const { tagIds, ...expense } = item;
-          await tx.expense.create({ data: { ...expense, dailyId, tags: { create: tagIds.map((tagId) => ({ tagId })) } } });
-        }
-      };
+      let dailyId: string;
       if (id) {
         // Replacing the rows and updating the total must commit together.
         await tx.dailyExpense.update({ where: { id }, data: { date, total } });
         await tx.expense.deleteMany({ where: { dailyId: id } });
-        await createItems(id);
-        return { id };
+        dailyId = id;
+      } else {
+        const day = await tx.dailyExpense.create({ data: { date, total }, select: { id: true } });
+        dailyId = day.id;
       }
-      const day = await tx.dailyExpense.create({ data: { date, total }, select: { id: true } });
-      await createItems(day.id);
-      return day;
-    });
+
+      if (data.length > 0) {
+        const expenses = data.map(({ categoryId, amount, memo, date, sortOrder }) => ({
+          categoryId, amount, memo, date, sortOrder, dailyId,
+        }));
+        if (data.some((item) => item.tagIds.length > 0)) {
+          const created = await tx.expense.createManyAndReturn({
+            data: expenses,
+            select: { id: true, sortOrder: true },
+          });
+          // createManyAndReturn does not guarantee the order of returned rows.
+          const tags = created.flatMap(({ id: expenseId, sortOrder }) =>
+            data[sortOrder].tagIds.map((tagId) => ({ expenseId, tagId })),
+          );
+          await tx.expenseTag.createMany({ data: tags });
+        } else {
+          await tx.expense.createMany({ data: expenses });
+        }
+      }
+      return { id: dailyId };
+    }, { timeout: 15000 });
     savedId = saved.id;
   } catch (error) {
     return failure(error);
