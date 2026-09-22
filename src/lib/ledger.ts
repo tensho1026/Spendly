@@ -1,6 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { monthRange, type MonthParam } from "@/lib/month";
+import { formatMonthParam, monthRange, type MonthParam } from "@/lib/month";
 import { sumItems } from "@/lib/ledger-validation";
 import { missingRecurringRules } from "@/lib/recurring";
 
@@ -59,6 +59,76 @@ export async function getDays(
     include: dailyInclude,
     orderBy: { date: "desc" },
   });
+}
+
+export async function getDashboardDays(month: MonthParam) {
+  const range = monthRange(month);
+  return prisma.dailyExpense.findMany({
+    where: { date: { gte: range.start, lt: range.end } },
+    select: {
+      id: true,
+      date: true,
+      total: true,
+      items: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        select: {
+          amount: true,
+          categoryId: true,
+          category: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { date: "desc" },
+  });
+}
+
+export function summarizePreviousMonthSpend(
+  dailyTotal: number,
+  dailyCategories: { categoryId: string; amount: number }[],
+  fixed: { categoryId: string; amount: number }[],
+) {
+  const byCategory = new Map<string, number>();
+  for (const item of [...dailyCategories, ...fixed]) {
+    byCategory.set(item.categoryId, (byCategory.get(item.categoryId) ?? 0) + item.amount);
+  }
+  return {
+    total: dailyTotal + fixed.reduce((sum, item) => sum + item.amount, 0),
+    byCategory,
+  };
+}
+
+export async function getPreviousMonthSpend(month: MonthParam) {
+  const range = monthRange(month);
+  const [days, categories, fixed] = await Promise.all([
+    prisma.dailyExpense.aggregate({
+      where: { date: { gte: range.start, lt: range.end } },
+      _sum: { total: true },
+    }),
+    prisma.expense.groupBy({
+      by: ["categoryId"],
+      where: { daily: { is: { date: { gte: range.start, lt: range.end } } } },
+      _sum: { amount: true },
+    }),
+    prisma.fixedExpense.findMany({
+      where: { month: formatMonthParam(month) },
+      select: { categoryId: true, amount: true },
+    }),
+  ]);
+  return summarizePreviousMonthSpend(
+    days._sum.total ?? 0,
+    categories.map((row) => ({ categoryId: row.categoryId, amount: row._sum.amount ?? 0 })),
+    fixed,
+  );
+}
+
+export async function getDashboardIncome(month: MonthParam) {
+  const range = monthRange(month);
+  const result = await prisma.income.aggregate({
+    where: { date: { gte: range.start, lt: range.end } },
+    _sum: { amount: true },
+    _count: { _all: true },
+  });
+  return { total: result._sum.amount ?? 0, count: result._count._all };
 }
 
 export const EXPENSE_PAGE_SIZE = 20;

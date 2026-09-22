@@ -13,7 +13,7 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { ensureRecurringFixed, getBudgets, getDays, getFixed, getIncomes, summarizeDays } from "@/lib/ledger";
+import { ensureRecurringFixed, getBudgets, getDashboardDays, getDashboardIncome, getFixed, getPreviousMonthSpend, summarizeDays } from "@/lib/ledger";
 import { sumItems } from "@/lib/ledger-validation";
 import { formatMonthJP, formatYen } from "@/lib/format";
 import { currentMonth, parseMonthParam, formatMonthParam, shiftMonth } from "@/lib/month";
@@ -30,17 +30,20 @@ export default async function DashboardPage({
     Array.isArray(value) ? value[0] : value;
   const month = parseMonthParam(first(params.month)),
     period = formatMonthParam(month);
-  const previousMonth = shiftMonth(month, -1), previousPeriod = formatMonthParam(previousMonth);
-  await ensureRecurringFixed(period);
-  const [days, fixed, budgets, previousDays, previousFixed, incomes] = await Promise.all([getDays(month), getFixed(period), getBudgets(period), getDays(previousMonth), getFixed(previousPeriod), getIncomes(month)]);
+  const previousMonth = shiftMonth(month, -1);
+  const [days, fixed, budgets, previous, income] = await Promise.all([
+    getDashboardDays(month),
+    ensureRecurringFixed(period).then(() => getFixed(period)),
+    getBudgets(period),
+    getPreviousMonthSpend(previousMonth),
+    getDashboardIncome(month),
+  ]);
   const summary = summarizeDays(days),
     fixedTotal = sumItems(fixed);
-  const previousSummary = summarizeDays(previousDays), previousFixedTotal = sumItems(previousFixed);
-  const monthTotal = summary.total + fixedTotal, previousTotal = previousSummary.total + previousFixedTotal, monthDelta = monthTotal - previousTotal;
-  const incomeTotal = incomes.reduce((sum, income) => sum + income.amount, 0), balance = incomeTotal - monthTotal, rate = savingsRate(incomeTotal, monthTotal);
+  const monthTotal = summary.total + fixedTotal, previousTotal = previous.total, monthDelta = monthTotal - previousTotal;
+  const incomeTotal = income.total, balance = incomeTotal - monthTotal, rate = savingsRate(incomeTotal, monthTotal);
   const currentCategorySpend = combineCategorySpend(summary.breakdown.map((row) => ({ ...row, amount: row.total })), fixed.map((row) => ({ categoryId: row.categoryId, name: row.category.name, amount: row.amount })));
-  const previousCategorySpend = combineCategorySpend(previousSummary.breakdown.map((row) => ({ ...row, amount: row.total })), previousFixed.map((row) => ({ categoryId: row.categoryId, name: row.category.name, amount: row.amount })));
-  const previousByCategory = new Map(previousCategorySpend.map((row) => [row.categoryId, row.amount]));
+  const previousByCategory = previous.byCategory;
   const usedByCategory = new Map(currentCategorySpend.map((row) => [row.categoryId, row.amount]));
   const selected = summary.breakdown.find(
     (item) => item.categoryId === first(params.category),
@@ -75,7 +78,7 @@ export default async function DashboardPage({
           {
             label: "月の収入",
             value: incomeTotal,
-            note: `${incomes.length}件の収入`,
+            note: `${income.count}件の収入`,
             href: `/income?month=${period}`,
           },
           {

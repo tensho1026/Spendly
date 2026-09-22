@@ -11,6 +11,7 @@ import { buildCalendarDays, combineCategorySpend, percentage } from "../src/lib/
 import { savingsRate } from "../src/lib/cashflow";
 import { buildNotifications } from "../src/lib/notifications";
 import { missingRecurringRules } from "../src/lib/recurring";
+import { summarizePreviousMonthSpend } from "../src/lib/ledger";
 import { buildAnnualReport, buildWeeklyReport } from "../src/lib/reports";
 import { categoryNameSchema } from "../src/lib/validations";
 
@@ -203,6 +204,19 @@ test("recurring generation includes active rules that were enabled later", () =>
     { id: "enabled-later", amount: 2000 },
   ];
   assert.deepEqual(missingRecurringRules(rules, ["existing"]), [rules[1]]);
+});
+
+test("previous month comparison keeps daily totals separate from category breakdowns", () => {
+  const result = summarizePreviousMonthSpend(
+    5000,
+    [{ categoryId: "food", amount: 2700 }],
+    [
+      { categoryId: "food", amount: 800 },
+      { categoryId: "living", amount: 3000 },
+    ],
+  );
+  assert.equal(result.total, 8800);
+  assert.deepEqual([...result.byCategory], [["food", 3500], ["living", 3000]]);
 });
 
 test("annual reports preserve monthly, category, tag and year-over-year totals", () => {
