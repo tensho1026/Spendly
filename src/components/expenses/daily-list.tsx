@@ -1,10 +1,16 @@
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
-import type { DailyRecord } from "@/lib/ledger";
 import { formatDateJP, formatYen } from "@/lib/format";
 import { sumItems } from "@/lib/ledger-validation";
 
-export function DailyList({ days }: { days: DailyRecord[] }) {
+type DailyListDay = {
+  id: string;
+  date: Date | string;
+  total: number;
+  items: { amount: number; category: { name: string } }[];
+};
+
+export function DailyList({ days }: { days: DailyListDay[] }) {
   if (!days.length)
     return (
       <div className="rounded-xl border border-dashed p-10 text-center">

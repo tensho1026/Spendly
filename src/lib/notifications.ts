@@ -1,7 +1,9 @@
+import { cache } from "react";
 import { jstParts } from "@/lib/format";
-import { getBudgets, getDays, getFixed, summarizeDays } from "@/lib/ledger";
-import { currentMonth, formatMonthParam, type MonthParam } from "@/lib/month";
+import { summarizeDays } from "@/lib/ledger";
+import { currentMonth, formatMonthParam, monthRange, type MonthParam } from "@/lib/month";
 import { combineCategorySpend, percentage } from "@/lib/planning";
+import { prisma } from "@/lib/prisma";
 
 export type AppNotification = {
   id: string;
@@ -129,14 +131,46 @@ export function buildNotifications({
   return result;
 }
 
-export async function getNotifications(
+export const getNotifications = cache(async function getNotifications(
   month: MonthParam = currentMonth(),
 ): Promise<AppNotification[]> {
   const period = formatMonthParam(month);
+  const range = monthRange(month);
   const [days, fixed, budgets] = await Promise.all([
-    getDays(month),
-    getFixed(period),
-    getBudgets(period),
+    prisma.dailyExpense.findMany({
+      where: { date: { gte: range.start, lt: range.end } },
+      select: {
+        date: true,
+        total: true,
+        items: {
+          select: {
+            amount: true,
+            categoryId: true,
+            category: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    prisma.fixedExpense.findMany({
+      where: { month: period },
+      select: {
+        id: true,
+        categoryId: true,
+        amount: true,
+        memo: true,
+        dueDay: true,
+        category: { select: { name: true } },
+      },
+    }),
+    prisma.categoryBudget.findMany({
+      where: { month: period },
+      select: {
+        id: true,
+        categoryId: true,
+        amount: true,
+        category: { select: { name: true } },
+      },
+    }),
   ]);
   return buildNotifications({ month, days, fixed, budgets });
-}
+});

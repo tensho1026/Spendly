@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { monthRange, type MonthParam } from "@/lib/month";
 import { sumItems } from "@/lib/ledger-validation";
@@ -27,30 +28,78 @@ export async function getDaily(id: string) {
       })
     : null;
 }
+function daysWhere(
+  month?: MonthParam,
+  filters: { categoryId?: string; keyword?: string; tagId?: string } = {},
+): Prisma.DailyExpenseWhereInput {
+  const range = month ? monthRange(month) : null;
+  return {
+    date: range ? { gte: range.start, lt: range.end } : undefined,
+    items:
+      filters.categoryId || filters.keyword || filters.tagId
+        ? {
+            some: {
+              categoryId: filters.categoryId || undefined,
+              memo: filters.keyword
+                ? { contains: filters.keyword, mode: "insensitive" }
+                : undefined,
+              tags: filters.tagId ? { some: { tagId: filters.tagId } } : undefined,
+            },
+          }
+        : undefined,
+  };
+}
+
 export async function getDays(
   month?: MonthParam,
   filters: { categoryId?: string; keyword?: string; tagId?: string } = {},
 ) {
-  const range = month ? monthRange(month) : null;
   return prisma.dailyExpense.findMany({
-    where: {
-      date: range ? { gte: range.start, lt: range.end } : undefined,
-      items:
-        filters.categoryId || filters.keyword || filters.tagId
-          ? {
-              some: {
-                categoryId: filters.categoryId || undefined,
-                memo: filters.keyword
-                  ? { contains: filters.keyword, mode: "insensitive" }
-                  : undefined,
-                tags: filters.tagId ? { some: { tagId: filters.tagId } } : undefined,
-              },
-            }
-          : undefined,
-    },
+    where: daysWhere(month, filters),
     include: dailyInclude,
     orderBy: { date: "desc" },
   });
+}
+
+export const EXPENSE_PAGE_SIZE = 20;
+
+export async function getDaysPage(
+  month: MonthParam | undefined,
+  filters: { categoryId?: string; keyword?: string; tagId?: string },
+  page: number,
+) {
+  const where = daysWhere(month, filters);
+  const [summary, days] = await Promise.all([
+    prisma.dailyExpense.aggregate({
+      where,
+      _count: { _all: true },
+      _sum: { total: true },
+    }),
+    prisma.dailyExpense.findMany({
+      where,
+      select: {
+        id: true,
+        date: true,
+        total: true,
+        items: {
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          select: {
+            amount: true,
+            category: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { date: "desc" },
+      skip: (page - 1) * EXPENSE_PAGE_SIZE,
+      take: EXPENSE_PAGE_SIZE,
+    }),
+  ]);
+  return {
+    days,
+    count: summary._count._all,
+    total: summary._sum.total ?? 0,
+    totalPages: Math.max(1, Math.ceil(summary._count._all / EXPENSE_PAGE_SIZE)),
+  };
 }
 export async function getTags() {
   return prisma.tag.findMany({ orderBy: [{ name: "asc" }] });
@@ -62,42 +111,41 @@ export async function getFixed(month: string) {
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
   });
 }
-export async function ensureRecurringFixed(month: string) {
-  await prisma.$transaction(async (tx) => {
+export async function ensureRecurringFixed(month: string, db = prisma) {
+  const rules = await db.recurringFixedExpense.findMany({
+    where: { active: true, startMonth: { lte: month } },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  if (rules.length === 0) return;
+
+  const existing = await db.fixedExpense.findMany({
+    where: { month, recurringId: { in: rules.map((rule) => rule.id) } },
+    select: { recurringId: true },
+  });
+  const missing = missingRecurringRules(
+    rules,
+    existing.map((item) => item.recurringId),
+  );
+  if (missing.length === 0) return;
+
+  await db.$transaction(async (tx) => {
     await tx.fixedMonth.upsert({
       where: { month },
       create: { month },
       update: {},
     });
-    const rules = await tx.recurringFixedExpense.findMany({
-      where: {
-        active: true,
-        startMonth: { lte: month },
-      },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    await tx.fixedExpense.createMany({
+      data: missing.map((rule, index) => ({
+        month,
+        categoryId: rule.categoryId,
+        amount: rule.amount,
+        memo: rule.memo,
+        dueDay: rule.dueDay,
+        recurringId: rule.id,
+        sortOrder: index,
+      })),
+      skipDuplicates: true,
     });
-    if (rules.length) {
-      const existing = await tx.fixedExpense.findMany({
-        where: { month, recurringId: { in: rules.map((rule) => rule.id) } },
-        select: { recurringId: true },
-      });
-      await tx.fixedExpense.createMany({
-        data: missingRecurringRules(
-          rules,
-          existing.map((item) => item.recurringId),
-        )
-          .map((rule, index) => ({
-            month,
-            categoryId: rule.categoryId,
-            amount: rule.amount,
-            memo: rule.memo,
-            dueDay: rule.dueDay,
-            recurringId: rule.id,
-            sortOrder: index,
-          })),
-        skipDuplicates: true,
-      });
-    }
     await tx.fixedMonth.update({ where: { month }, data: { recurringGeneratedAt: new Date() } });
   });
 }

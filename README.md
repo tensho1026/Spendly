@@ -47,7 +47,7 @@ npm start
 
 GitHub Actions でも lint・型チェック・テスト・ビルドを実行します。ユニットテストは日付境界、金額上限、入力検証を確認し、データベースを変更しません。
 
-Vercel の build では、`vercel.json` の設定により `DIRECT_URL` を使って `prisma migrate deploy` を先に実行します。Vercel の Production と Preview の環境変数に、アプリ用の `DATABASE_URL` とマイグレーション用の直接接続先 `DIRECT_URL` を登録してください。
+Vercel の build はデータベースを変更しません。Production と Preview の環境変数に、アプリ用の `DATABASE_URL` とマイグレーション用の `DIRECT_URL` を登録してください。今後スキーマを変更する場合は、対象のデータベースを確認してから `npm run db:deploy` を別途実行してください。
 
 ## 運用範囲
 
