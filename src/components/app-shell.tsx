@@ -14,6 +14,8 @@ import {
   Plus,
   ArrowUpRight,
   ChartNoAxesCombined,
+  Heart,
+  BookCheck,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import { cn } from "@/lib/utils";
@@ -25,6 +27,8 @@ const links = [
   { href: "/budgets", label: "月間予算", icon: Target },
   { href: "/fixed-expenses", label: "月の固定費", icon: CalendarDays },
   { href: "/reports", label: "レポート", icon: ChartNoAxesCombined },
+  { href: "/monthly-review", label: "月締め・振り返り", icon: BookCheck },
+  { href: "/wishlist", label: "ほしいものリスト", icon: Heart },
   { href: "/settings", label: "設定", icon: Settings },
 ];
 
@@ -39,7 +43,7 @@ export function AppShell({ children, notificationLink }: { children: ReactNode; 
       >
         本文へスキップ
       </a>
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col border-r bg-white px-5 py-8 md:flex">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 flex-col overflow-y-auto border-r bg-white px-5 py-8 md:flex">
         <Link
           href="/dashboard"
           className="flex items-center gap-3 px-3 text-2xl font-bold tracking-tight"

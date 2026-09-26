@@ -22,6 +22,7 @@ async function main() {
       await apply("prisma/migrations/20260919113000_budgets_and_templates/migration.sql");
       await apply("prisma/migrations/20260919122000_income_and_recurring_fixed/migration.sql");
       await apply("prisma/migrations/20260919141000_tags/migration.sql");
+      await apply("prisma/migrations/20260926090000_monthly_planning_wishlist/migration.sql");
       const days = await tx.$queryRawUnsafe<{id:string;total:number}[]>(`SELECT "id","total" FROM "DailyExpense" ORDER BY "date"`);
       assert.deepEqual(days,[{id:"day_2026-09-01",total:3000},{id:"day_2026-09-02",total:500}]);
       const rows = await tx.$queryRawUnsafe<{id:string;dailyId:string;memo:string}[]>(`SELECT "id","dailyId","memo" FROM "Expense" ORDER BY "id"`);

@@ -119,12 +119,13 @@ model Subcategory {
 }
 
 model DailyExpense {
-  id        String    @id @default(cuid())
-  date      DateTime  @unique
+  id        String     @id @default(cuid())
+  date      DateTime   @unique
   total     Int
   items     Expense[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  wishItems WishItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 }
 
 model FixedMonth {
@@ -169,4 +170,29 @@ model RecurringFixedExpense {
 
   @@index([categoryId])
   @@index([startMonth])
+}
+
+model MonthlyPlan {
+  month             String    @id
+  livingBudget      Int?
+  reflection        String    @default("")
+  closedAt          DateTime?
+  closedFingerprint String?
+  updatedAt         DateTime  @updatedAt
+}
+
+model WishItem {
+  id          String        @id @default(cuid())
+  name        String
+  amount      Int
+  url         String        @default("")
+  memo        String        @default("")
+  purchasedAt DateTime?
+  dailyId     String?
+  daily       DailyExpense? @relation(fields: [dailyId], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([purchasedAt, createdAt])
+  @@index([dailyId])
 }
