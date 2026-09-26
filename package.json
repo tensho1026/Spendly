@@ -15,7 +15,8 @@
     "test": "tsx --test tests/*.test.ts",
     "test:migration": "tsx tests/migration.integration.ts",
     "typecheck": "tsc --noEmit",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "test:planning": "tsx tests/planning.integration.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

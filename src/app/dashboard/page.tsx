@@ -1,3 +1,5 @@
+import { RemainingBudget } from "@/components/planning/remaining-budget";
+import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Plus, ArrowDown, ArrowUp, Minus, Target } from "lucide-react";
 import { CategoryChart } from "@/components/dashboard/category-chart";
@@ -31,12 +33,13 @@ export default async function DashboardPage({
   const month = parseMonthParam(first(params.month)),
     period = formatMonthParam(month);
   const previousMonth = shiftMonth(month, -1);
-  const [days, fixed, budgets, previous, income] = await Promise.all([
+  const [days, fixed, budgets, previous, income, plan] = await Promise.all([
     getDashboardDays(month),
     ensureRecurringFixed(period).then(() => getFixed(period)),
     getBudgets(period),
     getPreviousMonthSpend(previousMonth),
     getDashboardIncome(month),
+    prisma.monthlyPlan.findUnique({ where: { month: period } }),
   ]);
   const summary = summarizeDays(days),
     fixedTotal = sumItems(fixed);
@@ -73,6 +76,7 @@ export default async function DashboardPage({
       <p className="text-sm text-muted-foreground">
         {formatMonthJP(month.year, month.month)}のお金の流れ
       </p>
+      <RemainingBudget month={month} budget={plan?.livingBudget ?? null} days={days} />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           {

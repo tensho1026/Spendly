@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronRight, Tags, Zap, RefreshCw, Tag } from "lucide-react";
+import { ChevronRight, Tags, Zap, RefreshCw, Tag, Heart, BookCheck, Target } from "lucide-react";
 
 import {
   Card,
@@ -9,6 +9,9 @@ import {
 } from "@/components/ui/card";
 
 const SETTINGS_LINKS = [
+  { href: "/wishlist", title: "ほしいものリスト", description: "購入候補の金額やメモを保存し、購入したら支出に記録できます。", icon: Heart },
+  { href: "/monthly-review", title: "月締め・振り返り", description: "入力状況を確認して、毎月の気づきや来月の目標を残せます。", icon: BookCheck },
+  { href: "/budgets", title: "月間予算", description: "生活費とカテゴリ別予算を設定できます。", icon: Target },
   {
     href: "/settings/categories",
     title: "カテゴリ管理",
